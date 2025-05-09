@@ -17,7 +17,7 @@
         "alibabacloud/client": "^1.5",
         "doctrine/dbal": "^4.2.3",
         "iidestiny/laravel-filesystem-oss": "^3.6",
-        "intervention/image": "^3.11.2",
+        "intervention/image": "^3.11",
         "johnlui/aliyun-oss": "~2.0",
         "laravel/ui": "^4.6",
         "maatwebsite/excel": "^3.1",
