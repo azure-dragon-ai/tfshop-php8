@@ -14,7 +14,7 @@
         "ext-mysqli": "*",
         "ext-redis": "*",
         "ext-zip": "*",
-        "96qbhy/tt-microapp": "^2.2",
+        "96qbhy/tt-microapp": "^2.4",
         "alibabacloud/client": "^1.5",
         "doctrine/dbal": "^2.11",
         "fideloper/proxy": "^4.0",
