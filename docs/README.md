@@ -64,6 +64,10 @@ php artisan migrate
 php artisan generate:sql pure
 php artisan storage:link
 php artisan key:generate
+php artisan passport:install --uuids
+php artisan passport:keys
+php artisan passport:client --password
+php artisan passport:client --password
 
 php artisan app:sync-resource-to-oss
 
