@@ -37,9 +37,9 @@ class ConfigServiceProvider extends ServiceProvider
      */
     public function boot()
     {
-        if (Schema::hasTable('configs')) {
+        /*if (Schema::hasTable('configs')) {
             $this->loadMyConfig();
-        }
+        }*/
     }
 
     protected function loadMyConfig()
