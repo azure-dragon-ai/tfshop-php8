@@ -21,7 +21,7 @@ use Illuminate\Foundation\Validation\ValidatesRequests;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\Request;
-use EasyWeChat\Factory;
+use EasyWeChat\MiniApp\Application;
 /**
  * @group [PUBLIC]Controller(公共方法)
  * Class Controller
@@ -82,7 +82,7 @@ class Controller extends BaseController
         //微信小程序图片安全内容检测
         $config = config('wechat.mini_program.default');
         if ($request->header('apply-secret') && $config['app_id'] && $request->type == 1) {
-            $miniProgram = Factory::miniProgram($config); // 小程序
+            $miniProgram = new Application($config);// 小程序
             $result = $miniProgram->content_security->checkImage('storage/temporary/' . $url['title']);
             if ($result['errcode'] == 87014) {
                 return resReturn(0, __('upload_pictures.mini_program.error'), Code::CODE_PARAMETER_WRONG);
