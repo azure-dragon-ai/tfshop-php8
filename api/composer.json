@@ -14,7 +14,6 @@
         "ext-mysqli": "*",
         "ext-redis": "*",
         "ext-zip": "*",
-        "96qbhy/tt-microapp": "^2.4",
         "alibabacloud/client": "^1.5",
         "doctrine/dbal": "^2.11",
         "fideloper/proxy": "^4.0",
@@ -78,7 +77,6 @@
         "spatie/laravel-ignition": "^2.0"
     },
     "config": {
-        "platform-check": false,
         "optimize-autoloader": true,
         "preferred-install": "dist",
         "sort-packages": true,
