@@ -38,7 +38,7 @@
         "gregwar/captcha-bundle": "^2.2",
         "guzzlehttp/guzzle": "^7.2",
         "hg/apidoc": "^5.2",
-        "jenssegers/imagehash": "^0.8.0",
+        "jenssegers/imagehash": "^0.10.0",
         "jianyan74/php-excel": "^1.0",
         "laravel/framework": "^10.10",
         "laravel/horizon": "^5.21",
