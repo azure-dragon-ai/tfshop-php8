@@ -15,7 +15,7 @@
         "ext-redis": "*",
         "ext-zip": "*",
         "alibabacloud/client": "^1.5",
-        "doctrine/dbal": "^4.2.3",
+        "doctrine/dbal": "^2.6",
         "iidestiny/laravel-filesystem-oss": "^3.6",
         "intervention/image": "^3.11",
         "johnlui/aliyun-oss": "~2.0",
