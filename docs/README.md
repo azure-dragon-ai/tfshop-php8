@@ -69,6 +69,11 @@ php artisan passport:keys
 php artisan passport:client --password
 php artisan passport:client --password
 
+chmod +x node_modules/.bin/*
+cnpm install
+npm rebuild node-sass
+npm run dev
+
 php artisan app:sync-resource-to-oss
 
 npm 官方原始镜像网址是：https://registry.npmjs.org/
