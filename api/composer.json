@@ -65,7 +65,7 @@
         "barryvdh/laravel-ide-helper": "^2.6",
         "beyondcode/laravel-dump-server": "^1.0",
         "filp/whoops": "^2.0",
-        "knuckleswtf/scribe": "^3.37",
+        "knuckleswtf/scribe": "^5.2",
         "slevomat/coding-standard": "^6.4",
         "squizlabs/php_codesniffer": "^3.5",
 
