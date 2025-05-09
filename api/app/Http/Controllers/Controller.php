@@ -22,6 +22,7 @@ use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\Request;
 use EasyWeChat\MiniApp\Application;
+use EasyWeChat\Kernel\Support\Str;
 /**
  * @group [PUBLIC]Controller(公共方法)
  * Class Controller
@@ -83,10 +84,10 @@ class Controller extends BaseController
         $config = config('wechat.mini_program.default');
         if ($request->header('apply-secret') && $config['app_id'] && $request->type == 1) {
             $miniProgram = new Application($config);// 小程序
-            $result = $miniProgram->content_security->checkImage('storage/temporary/' . $url['title']);
+            /*$result = $miniProgram->content_security->checkImage('storage/temporary/' . $url['title']);
             if ($result['errcode'] == 87014) {
                 return resReturn(0, __('upload_pictures.mini_program.error'), Code::CODE_PARAMETER_WRONG);
-            }
+            }*/
         }
         // 显示文件详细数据
         if ($request->has('full')) {
@@ -94,6 +95,18 @@ class Controller extends BaseController
         } else {
             return $url['url'];
         }
+    }
+
+    /**
+     * Return random string.
+     *
+     * @param string $length
+     *
+     * @return string
+     */
+    function str_random($length)
+    {
+        return Str::random($length);
     }
 
     /**
@@ -111,7 +124,7 @@ class Controller extends BaseController
             $extension = $request->file->extension();
             if ($extension == 'jpeg') $extension = 'jpg';
         }
-        $randFileName = str_random(5) . time();
+        $randFileName = $this->str_random(5) . time();
         $fileName = $randFileName . '.' . $extension;
 
         $pathName = 'temporary/' . $fileName;
