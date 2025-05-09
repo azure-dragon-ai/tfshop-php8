@@ -10,11 +10,10 @@ class FullyQualifiedGlobalFunctionsSniff
 	extends AbstractFullyQualifiedGlobalReference
 {
 
-	/** @var bool */
-	public $includeSpecialFunctions = false;
+	public bool $includeSpecialFunctions = false;
 
 	/**
-	 * @return string[]
+	 * @return list<string>
 	 */
 	protected function getNormalizedInclude(): array
 	{

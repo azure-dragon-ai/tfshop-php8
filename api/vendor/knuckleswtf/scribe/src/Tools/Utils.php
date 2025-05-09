@@ -9,11 +9,17 @@ use FastRoute\RouteParser\Std;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Routing\Route;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Knuckles\Scribe\Exceptions\CouldntFindFactory;
+use Knuckles\Scribe\Exceptions\CouldntGetRouteDetails;
+use Knuckles\Scribe\ScribeServiceProvider;
 use Knuckles\Scribe\Tools\ConsoleOutputUtils as c;
+use League\Flysystem\DirectoryListing;
 use League\Flysystem\Filesystem;
+use League\Flysystem\FilesystemException;
 use League\Flysystem\Local\LocalFilesystemAdapter;
+use Mpociot\Reflection\DocBlock\Tag;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionFunction;
@@ -22,6 +28,27 @@ use Throwable;
 
 class Utils
 {
+    /**
+     * Sometimes you have a config array that can have items as keys or values, like this:
+     *
+     * [
+     *   'a',
+     *   'b' => [ (options for b) ]
+     * ]
+     *
+     * This method extracts the top-level options (['a', 'b'])
+     *
+     * @param array $mixedList
+     */
+    public static function getTopLevelItemsFromMixedConfigList(array $mixedList): array
+    {
+        $topLevels = [];
+        foreach ($mixedList as $item => $value) {
+            $topLevels[] = is_int($item) ? $value : $item;
+        }
+        return $topLevels;
+    }
+
     public static function getUrlWithBoundParameters(string $uri, array $urlParameters = []): string
     {
         return self::replaceUrlParameterPlaceholdersWithValues($uri, $urlParameters);
@@ -40,25 +67,6 @@ class Utils
     {
         if (empty($urlParameters)) {
             return $uri;
-        }
-
-        if (self::isLumen()) {
-            $boundUri = '';
-            $possibilities = (new Std)->parse($uri);
-            // See https://github.com/nikic/FastRoute#overriding-the-route-parser-and-dispatcher
-            $possibilityWithAllSegmentsPresent = end($possibilities);
-            foreach ($possibilityWithAllSegmentsPresent as $part) {
-                if (!is_array($part)) {
-                    // It's just a path segment, not a URL parameter'
-                    $boundUri .= $part;
-                    continue;
-                }
-
-                $name = $part[0];
-                $boundUri .= $urlParameters[$name];
-            }
-
-            return $boundUri;
         }
 
         foreach ($urlParameters as $parameterName => $example) {
@@ -83,7 +91,19 @@ class Utils
             if (is_array($uses)) {
                 return $uses;
             } elseif (is_string($uses)) {
-                return explode('@', $uses);
+                $usesArray = explode('@', $uses);
+                if (count($usesArray) < 2) {
+                    throw CouldntGetRouteDetails::new();
+                }
+                [$class, $method] = $usesArray;
+
+                // Support for the Laravel Actions package, docblock should be put on the asController method
+                if ($method === '__invoke' && method_exists($class, 'asController'))
+                {
+                    return [$class, 'asController'];
+                }
+
+                return [$class, $method];
             } elseif (static::isInvokableObject($uses)) {
                 return [$uses, '__invoke'];
             }
@@ -100,36 +120,23 @@ class Utils
 
     public static function deleteDirectoryAndContents(string $dir, ?string $workingDir = null): void
     {
-        if (class_exists(LocalFilesystemAdapter::class)) {
-            // Flysystem 2+
-            $workingDir ??= getcwd();
-            $adapter = new LocalFilesystemAdapter($workingDir);
-            $fs = new Filesystem($adapter);
-            $dir = str_replace($workingDir, '', $dir);
-            $fs->deleteDirectory($dir);
-        } else {
-            // v1
-            $adapter = new \League\Flysystem\Adapter\Local($workingDir ?: getcwd());
-            $fs = new Filesystem($adapter);
-            $dir = str_replace($adapter->getPathPrefix(), '', $dir);
-            $fs->deleteDir($dir);
-        }
+        $workingDir ??= getcwd();
+        $adapter = new LocalFilesystemAdapter($workingDir);
+        $fs = new Filesystem($adapter);
+        $dir = str_replace($workingDir, '', $dir);
+        $fs->deleteDirectory($dir);
     }
 
+    /**
+     * @param string $dir
+     * @return DirectoryListing<\League\Flysystem\StorageAttributes>
+     * @throws FilesystemException
+     */
     public static function listDirectoryContents(string $dir)
     {
-        if (class_exists(LocalFilesystemAdapter::class)) {
-            // Flysystem 2+
-            $adapter = new LocalFilesystemAdapter(getcwd());
-            $fs = new Filesystem($adapter);
-            return $fs->listContents($dir);
-        } else {
-            // v1
-            $adapter = new \League\Flysystem\Adapter\Local(getcwd()); // @phpstan-ignore-line
-            $fs = new Filesystem($adapter); // @phpstan-ignore-line
-            $dir = str_replace($adapter->getPathPrefix(), '', $dir); // @phpstan-ignore-line
-            return $fs->listContents($dir);
-        }
+        $adapter = new LocalFilesystemAdapter(getcwd());
+        $fs = new Filesystem($adapter);
+        return $fs->listContents($dir);
     }
 
     public static function copyDirectory(string $src, string $dest): void
@@ -153,6 +160,11 @@ class Utils
                 self::copyDirectory($f->getRealPath(), "$dest/$f");
             }
         }
+    }
+
+    public static function makeDirectoryRecursive(string $dir): void
+    {
+        File::isDirectory($dir) || File::makeDirectory($dir, 0777, true, true);
     }
 
     public static function deleteFilesMatching(string $dir, callable $condition): void
@@ -199,6 +211,9 @@ class Utils
      */
     public static function getReflectedRouteMethod(array $routeControllerAndMethod): ReflectionFunctionAbstract
     {
+        if (count($routeControllerAndMethod) < 2) {
+            throw CouldntGetRouteDetails::new();
+        }
         [$class, $method] = $routeControllerAndMethod;
 
         if ($class instanceof Closure) {
@@ -247,14 +262,15 @@ class Utils
                 $relationChain = explode('.', $relation);
                 $relationVector = array_shift($relationChain);
 
-                $relationModel = get_class((new $modelName())->{$relationVector}()->getModel());
-                $relationType = get_class((new $modelName())->{$relationVector}());
+                $relation = (new $modelName())->{$relationVector}();
+                $relationType = get_class($relation);
+                $relationModel = get_class($relation->getModel());
 
                 $factoryChain = empty($relationChain)
                     ? call_user_func_array([$relationModel, 'factory'], [])
                     : Utils::getModelFactory($relationModel, $states, [implode('.', $relationChain)]);
 
-                if ($relationType === BelongsToMany::class) {
+                if ($relation instanceof BelongsToMany) {
                     $pivot = method_exists($factory, 'pivot' . $relationVector)
                         ? $factory->{'pivot' . $relationVector}()
                         : [];
@@ -284,18 +300,56 @@ class Utils
         return $factory;
     }
 
-    public static function isLumen(): bool
+    /**
+     * Filter a list of docblock tags to those matching the specified ones (case-insensitive).
+     *
+     * @param Tag[] $tags
+     * @param string ...$names
+     *
+     * @return Tag[]
+     */
+    public static function filterDocBlockTags(array $tags, string ...$names): array
     {
-        // See https://github.com/laravel/lumen-framework/blob/99330e6ca2198e228f5894cf84d843c2a539a250/src/Application.php#L163
-        $app = app();
-        if ($app
-            && is_callable([$app, 'version'])
-            && Str::startsWith($app->version(), 'Lumen')
-        ) {
-            return true;
-        }
-
-        return false;
+        // Avoid "holes" in the keys of the filtered array by using array_values
+        return array_values(
+            array_filter($tags, fn($tag) => in_array(strtolower($tag->getName()),$names))
+        );
     }
 
+    /**
+     * Like Laravel's trans/__ function, but will fallback to using the default translation if translation fails.
+     * For instance, if the user's locale is DE, but they have no DE strings defined,
+     * Laravel simply renders the translation key.
+     * Instead, we render the EN version.
+     */
+    public static function trans(string $key, array $replace = [])
+    {
+        // We only load our custom translation layer if we really need it
+        if (!ScribeServiceProvider::$customTranslationLayerLoaded) {
+            app(ScribeServiceProvider::class, ['app' => app()])->loadCustomTranslationLayer();
+        }
+
+        $translation = trans($key, $replace);
+
+        /* @phpstan-ignore-next-line */
+        if ($translation === $key || $translation === null) {
+            $translation = trans($key, $replace, 'en');
+        }
+
+
+        if ($translation === $key) {
+            throw new \Exception("Translation not found for $key. You can add a translation for this in your `lang/scribe.php`, but this is likely a problem with the package. Please open an issue.");
+        }
+
+        return $translation;
+    }
+}
+
+function getTopLevelItemsFromMixedOrderList(array $mixedList): array
+{
+  $topLevels = [];
+  foreach ($mixedList as $item => $value) {
+    $topLevels[] = is_int($item) ? $value : $item;
+  }
+  return $topLevels;
 }

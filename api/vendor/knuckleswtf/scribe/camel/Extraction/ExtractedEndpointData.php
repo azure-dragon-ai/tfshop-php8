@@ -2,11 +2,10 @@
 
 namespace Knuckles\Camel\Extraction;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Routing\Route;
-use Illuminate\Support\Str;
 use Knuckles\Camel\BaseDTO;
-use Knuckles\Scribe\Extracting\UrlParamsNormalizer;
+use Knuckles\Scribe\Extracting\Shared\UrlParamsNormalizer;
+use Knuckles\Scribe\Tools\Globals;
 use Knuckles\Scribe\Tools\Utils as u;
 use ReflectionClass;
 
@@ -88,9 +87,20 @@ class ExtractedEndpointData extends BaseDTO
 
         parent::__construct($parameters);
 
-        $this->uri = UrlParamsNormalizer::normalizeParameterNamesInRouteUri($this->route, $this->method);
+        $defaultNormalizer = fn() => UrlParamsNormalizer::normalizeParameterNamesInRouteUri($this->route, $this->method);
+        $this->uri = match (is_callable(Globals::$__normalizeEndpointUrlUsing)) {
+            true => call_user_func_array(Globals::$__normalizeEndpointUrlUsing,
+                [$this->route->uri, $this->route, $this->method, $this->controller, $defaultNormalizer]),
+            default => $defaultNormalizer(),
+        };
     }
 
+    /**
+     * @param Route $route
+     * @param array $extras Only used for quick overrides in tests
+     * @return self
+     * @throws \ReflectionException
+     */
     public static function fromRoute(Route $route, array $extras = []): self
     {
         $httpMethods = self::getMethods($route);
@@ -140,12 +150,13 @@ class ExtractedEndpointData extends BaseDTO
     public function forSerialisation()
     {
         $copy = $this->except(
-        // Get rid of all duplicate data
+            // Get rid of all duplicate data
             'cleanQueryParameters', 'cleanUrlParameters', 'fileParameters', 'cleanBodyParameters',
             // and objects used only in extraction
             'route', 'controller', 'method', 'auth',
         );
-        $copy->metadata = $copy->metadata->except('groupName', 'groupDescription', 'beforeGroup', 'afterGroup');
+        // Remove these, since they're on the parent group object
+        $copy->metadata = $copy->metadata->except('groupName', 'groupDescription');
 
         return $copy;
     }

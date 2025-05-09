@@ -8,9 +8,10 @@ class MatchedRoute implements \ArrayAccess
 {
     protected Route $route;
 
+    /** @deprecated Use the strategy config instead */
     protected array $rules;
 
-    public function __construct(Route $route, array $applyRules)
+    public function __construct(Route $route, array $applyRules = [])
     {
         $this->route = $route;
         $this->rules = $applyRules;
@@ -21,6 +22,7 @@ class MatchedRoute implements \ArrayAccess
         return $this->route;
     }
 
+    /** @deprecated Use the strategy config instead */
     public function getRules(): array
     {
         return $this->rules;
@@ -31,7 +33,7 @@ class MatchedRoute implements \ArrayAccess
         return is_callable([$this, 'get' . ucfirst($offset)]);
     }
 
-    public function offsetGet($offset)
+    public function offsetGet($offset): mixed
     {
         return call_user_func([$this, 'get' . ucfirst($offset)]);
     }

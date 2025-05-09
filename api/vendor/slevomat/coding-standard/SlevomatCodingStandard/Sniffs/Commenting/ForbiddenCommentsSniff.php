@@ -6,9 +6,9 @@ use Exception;
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
 use SlevomatCodingStandard\Helpers\DocCommentHelper;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\SniffSettingsHelper;
 use function array_key_exists;
-use function is_array;
 use function preg_match;
 use function preg_replace;
 use function sprintf;
@@ -19,8 +19,8 @@ class ForbiddenCommentsSniff implements Sniff
 
 	public const CODE_COMMENT_FORBIDDEN = 'CommentForbidden';
 
-	/** @var string[] */
-	public $forbiddenCommentPatterns = [];
+	/** @var list<string> */
+	public array $forbiddenCommentPatterns = [];
 
 	/**
 	 * @return array<int, (int|string)>
@@ -34,7 +34,6 @@ class ForbiddenCommentsSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $docCommentOpenPointer
 	 */
 	public function process(File $phpcsFile, $docCommentOpenPointer): void
@@ -60,7 +59,7 @@ class ForbiddenCommentsSniff implements Sniff
 				$fix = $phpcsFile->addFixableError(
 					sprintf('Documentation comment contains forbidden comment "%s".', $comment->getContent()),
 					$comment->getPointer(),
-					self::CODE_COMMENT_FORBIDDEN
+					self::CODE_COMMENT_FORBIDDEN,
 				);
 
 				if (!$fix) {
@@ -85,9 +84,8 @@ class ForbiddenCommentsSniff implements Sniff
 
 				$docCommentContent = '';
 				for ($i = $docCommentOpenPointer + 1; $i < $tokens[$docCommentOpenPointer]['comment_closer']; $i++) {
-					/** @var string|(string|int)[] $token */
 					$token = $phpcsFile->fixer->getTokenContent($i);
-					$docCommentContent .= is_array($token) ? $token['content'] : $token;
+					$docCommentContent .= $token;
 				}
 
 				if (preg_match('~^[\\s\*]*$~', $docCommentContent) !== 0) {
@@ -97,15 +95,17 @@ class ForbiddenCommentsSniff implements Sniff
 						'',
 						$tokens[$pointerBeforeDocComment]['content'],
 						-1,
-						$replacedCount
+						$replacedCount,
 					);
 					if ($replacedCount !== 0) {
 						$phpcsFile->fixer->replaceToken($pointerBeforeDocComment, $contentBeforeWithoutSpaces);
 					}
 
-					for ($i = $docCommentOpenPointer; $i <= $tokens[$docCommentOpenPointer]['comment_closer']; $i++) {
-						$phpcsFile->fixer->replaceToken($i, '');
-					}
+					FixerHelper::removeBetweenIncluding(
+						$phpcsFile,
+						$docCommentOpenPointer,
+						$tokens[$docCommentOpenPointer]['comment_closer'],
+					);
 
 					$pointerAfterDocComment = $tokens[$docCommentOpenPointer]['comment_closer'] + 1;
 					if (array_key_exists($pointerAfterDocComment, $tokens)) {
@@ -114,7 +114,7 @@ class ForbiddenCommentsSniff implements Sniff
 							'',
 							$tokens[$pointerAfterDocComment]['content'],
 							-1,
-							$replacedCount
+							$replacedCount,
 						);
 						if ($replacedCount !== 0) {
 							$phpcsFile->fixer->replaceToken($pointerAfterDocComment, $contentAfterWithoutSpaces);

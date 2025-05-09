@@ -28,16 +28,16 @@ class RequireMultiLineCallSniff extends AbstractLineCall
 
 	public const CODE_REQUIRED_MULTI_LINE_CALL = 'RequiredMultiLineCall';
 
-	/** @var int */
-	public $minLineLength = 121;
+	public int $minLineLength = 121;
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $stringPointer
 	 */
 	public function process(File $phpcsFile, $stringPointer): void
 	{
+		$this->minLineLength = SniffSettingsHelper::normalizeInteger($this->minLineLength);
+
 		if (!$this->isCall($phpcsFile, $stringPointer)) {
 			return;
 		}
@@ -60,7 +60,7 @@ class RequireMultiLineCallSniff extends AbstractLineCall
 			$phpcsFile,
 			[T_COMMA, T_OPEN_PARENTHESIS, T_CLOSE_PARENTHESIS, T_OPEN_SHORT_ARRAY, T_CLOSE_SHORT_ARRAY],
 			$parenthesisOpenerPointer + 1,
-			$parenthesisCloserPointer
+			$parenthesisCloserPointer,
 		);
 		foreach ($pointers as $pointer) {
 			if (in_array($tokens[$pointer]['code'], [T_OPEN_PARENTHESIS, T_OPEN_SHORT_ARRAY], true)) {
@@ -107,7 +107,7 @@ class RequireMultiLineCallSniff extends AbstractLineCall
 			$lineEnd = $this->getLineEnd($phpcsFile, $parenthesisCloserPointer);
 			$lineLength = strlen($lineStart . $call . $lineEnd);
 		} else {
-			$lineEnd = $this->getLineEnd($phpcsFile, $parenthesisOpenerPointer);
+			$lineEnd = $this->getLineEnd($phpcsFile, $parenthesisOpenerPointer + 1);
 			$lineLength = strlen($lineStart . $lineEnd);
 		}
 
@@ -120,7 +120,7 @@ class RequireMultiLineCallSniff extends AbstractLineCall
 			$lineStart,
 			$lineEnd,
 			count($parametersPointers),
-			strlen(IndentationHelper::convertTabsToSpaces($phpcsFile, $oneIndentation))
+			strlen(IndentationHelper::convertTabsToSpaces($phpcsFile, $oneIndentation)),
 		)) {
 			return;
 		}
@@ -130,11 +130,11 @@ class RequireMultiLineCallSniff extends AbstractLineCall
 		$name = ltrim($tokens[$stringPointer]['content'], '\\');
 
 		if (in_array($tokens[$previousPointer]['code'], [T_OBJECT_OPERATOR, T_DOUBLE_COLON], true)) {
-			$error = sprintf('Call of method %s() should be splitted to more lines.', $name);
+			$error = sprintf('Call of method %s() should be split to more lines.', $name);
 		} elseif ($tokens[$previousPointer]['code'] === T_NEW) {
-			$error = 'Constructor call should be splitted to more lines.';
+			$error = 'Constructor call should be split to more lines.';
 		} else {
-			$error = sprintf('Call of function %s() should be splitted to more lines.', $name);
+			$error = sprintf('Call of function %s() should be split to more lines.', $name);
 		}
 
 		$fix = $phpcsFile->addFixableError($error, $stringPointer, self::CODE_REQUIRED_MULTI_LINE_CALL);
@@ -149,7 +149,7 @@ class RequireMultiLineCallSniff extends AbstractLineCall
 
 		for ($i = $parenthesisOpenerPointer + 1; $i < $parenthesisCloserPointer; $i++) {
 			if (in_array($i, $parametersPointers, true)) {
-				FixerHelper::cleanWhitespaceBefore($phpcsFile, $i);
+				FixerHelper::removeWhitespaceBefore($phpcsFile, $i);
 				$phpcsFile->fixer->addContentBefore($i, $phpcsFile->eolChar . $parametersIndentation);
 			} elseif ($tokens[$i]['content'] === $phpcsFile->eolChar) {
 				$phpcsFile->fixer->addContent($i, $oneIndentation);
@@ -167,16 +167,16 @@ class RequireMultiLineCallSniff extends AbstractLineCall
 	private function shouldBeSkipped(File $phpcsFile, int $stringPointer, int $parenthesisCloserPointer): bool
 	{
 		$tokens = $phpcsFile->getTokens();
+		$nameTokenCodes = TokenHelper::getOnlyNameTokenCodes();
 
-		$firstPointerOnLine = TokenHelper::findFirstNonWhitespaceOnLine($phpcsFile, $stringPointer);
-		$stringPointersBefore = TokenHelper::findNextAll(
-			$phpcsFile,
-			TokenHelper::getOnlyNameTokenCodes(),
-			$firstPointerOnLine,
-			$stringPointer
-		);
+		$searchStartPointer = TokenHelper::findFirstNonWhitespaceOnLine($phpcsFile, $stringPointer);
+		while (true) {
+			$stringPointerBefore = TokenHelper::findNext($phpcsFile, $nameTokenCodes, $searchStartPointer, $stringPointer);
 
-		foreach ($stringPointersBefore as $stringPointerBefore) {
+			if ($stringPointerBefore === null) {
+				break;
+			}
+
 			$pointerAfterStringPointerBefore = TokenHelper::findNextEffective($phpcsFile, $stringPointerBefore + 1);
 			if (
 				$tokens[$pointerAfterStringPointerBefore]['code'] === T_OPEN_PARENTHESIS
@@ -184,17 +184,19 @@ class RequireMultiLineCallSniff extends AbstractLineCall
 			) {
 				return true;
 			}
+
+			$searchStartPointer = $stringPointerBefore + 1;
 		}
 
 		$lastPointerOnLine = TokenHelper::findLastTokenOnLine($phpcsFile, $parenthesisCloserPointer);
-		$stringPointersAfter = TokenHelper::findNextAll(
-			$phpcsFile,
-			TokenHelper::getOnlyNameTokenCodes(),
-			$parenthesisCloserPointer + 1,
-			$lastPointerOnLine + 1
-		);
+		$searchStartPointer = $parenthesisCloserPointer + 1;
+		while (true) {
+			$stringPointerAfter = TokenHelper::findNext($phpcsFile, $nameTokenCodes, $searchStartPointer, $lastPointerOnLine + 1);
 
-		foreach ($stringPointersAfter as $stringPointerAfter) {
+			if ($stringPointerAfter === null) {
+				break;
+			}
+
 			$pointerAfterStringPointerAfter = TokenHelper::findNextEffective($phpcsFile, $stringPointerAfter + 1);
 			if (
 				$pointerAfterStringPointerAfter !== null
@@ -202,11 +204,13 @@ class RequireMultiLineCallSniff extends AbstractLineCall
 				&& $tokens[$tokens[$pointerAfterStringPointerAfter]['parenthesis_closer']]['line'] === $tokens[$stringPointer]['line']
 				&& $tokens[$pointerAfterStringPointerAfter]['parenthesis_closer'] !== TokenHelper::findNextEffective(
 					$phpcsFile,
-					$pointerAfterStringPointerAfter + 1
+					$pointerAfterStringPointerAfter + 1,
 				)
 			) {
 				return true;
 			}
+
+			$searchStartPointer = $stringPointerAfter + 1;
 		}
 
 		return false;
@@ -220,13 +224,11 @@ class RequireMultiLineCallSniff extends AbstractLineCall
 		int $indentationLength
 	): bool
 	{
-		$minLineLength = SniffSettingsHelper::normalizeInteger($this->minLineLength);
-
-		if ($minLineLength === 0) {
+		if ($this->minLineLength === 0) {
 			return true;
 		}
 
-		if ($lineLength < $minLineLength) {
+		if ($lineLength < $this->minLineLength) {
 			return false;
 		}
 

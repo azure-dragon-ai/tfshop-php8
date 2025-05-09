@@ -4,6 +4,7 @@ namespace SlevomatCodingStandard\Sniffs\PHP;
 
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use function array_key_exists;
 use function count;
@@ -14,6 +15,7 @@ use const T_CLOSE_PARENTHESIS;
 use const T_CLOSURE;
 use const T_FN;
 use const T_FOR;
+use const T_MATCH;
 use const T_OPEN_CURLY_BRACKET;
 use const T_OPEN_TAG;
 use const T_SEMICOLON;
@@ -36,7 +38,6 @@ class UselessSemicolonSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $semicolonPointer
 	 */
 	public function process(File $phpcsFile, $semicolonPointer): void
@@ -106,7 +107,7 @@ class UselessSemicolonSniff implements Sniff
 		}
 
 		$scopeOpenerPointer = $tokens[$previousPointer]['scope_condition'];
-		if (in_array($tokens[$scopeOpenerPointer]['code'], [T_CLOSURE, T_FN, T_ANON_CLASS], true)) {
+		if (in_array($tokens[$scopeOpenerPointer]['code'], [T_CLOSURE, T_FN, T_ANON_CLASS, T_MATCH], true)) {
 			return;
 		}
 
@@ -150,9 +151,9 @@ class UselessSemicolonSniff implements Sniff
 		}
 
 		$phpcsFile->fixer->beginChangeset();
-		for ($i = $fixStartPointer; $i <= $fixEndPointer; $i++) {
-			$phpcsFile->fixer->replaceToken($i, '');
-		}
+
+		FixerHelper::removeBetweenIncluding($phpcsFile, $fixStartPointer, $fixEndPointer);
+
 		$phpcsFile->fixer->endChangeset();
 	}
 

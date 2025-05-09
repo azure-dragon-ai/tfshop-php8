@@ -2,16 +2,19 @@
 
 namespace PHPStan\PhpDocParser\Ast\PhpDoc;
 
+use PHPStan\PhpDocParser\Ast\NodeAttributes;
 use PHPStan\PhpDocParser\Ast\Type\TypeNode;
+use function trim;
 
 class ThrowsTagValueNode implements PhpDocTagValueNode
 {
 
-	/** @var TypeNode */
-	public $type;
+	use NodeAttributes;
+
+	public TypeNode $type;
 
 	/** @var string (may be empty) */
-	public $description;
+	public string $description;
 
 	public function __construct(TypeNode $type, string $description)
 	{

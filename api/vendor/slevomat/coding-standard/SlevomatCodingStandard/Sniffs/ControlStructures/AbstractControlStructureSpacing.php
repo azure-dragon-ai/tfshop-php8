@@ -7,27 +7,26 @@ use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
 use PHP_CodeSniffer\Util\Tokens;
 use SlevomatCodingStandard\Helpers\CommentHelper;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\SniffSettingsHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
-use SlevomatCodingStandard\Sniffs\Namespaces\UndefinedKeywordTokenException;
 use Throwable;
 use function array_key_exists;
 use function array_map;
-use function array_values;
-use function constant;
 use function count;
-use function defined;
 use function in_array;
 use function sprintf;
 use function strlen;
 use function substr;
 use function substr_count;
 use const T_ANON_CLASS;
+use const T_BREAK;
 use const T_CASE;
 use const T_CATCH;
 use const T_CLOSE_CURLY_BRACKET;
 use const T_CLOSURE;
 use const T_COLON;
+use const T_CONTINUE;
 use const T_DEFAULT;
 use const T_DO;
 use const T_ELSE;
@@ -36,15 +35,21 @@ use const T_FINALLY;
 use const T_FN;
 use const T_FOR;
 use const T_FOREACH;
+use const T_GOTO;
 use const T_IF;
 use const T_OPEN_CURLY_BRACKET;
 use const T_OPEN_SHORT_ARRAY;
 use const T_OPEN_TAG;
+use const T_PARENT;
+use const T_RETURN;
 use const T_SEMICOLON;
 use const T_SWITCH;
+use const T_THROW;
 use const T_TRY;
 use const T_WHILE;
 use const T_WHITESPACE;
+use const T_YIELD;
+use const T_YIELD_FROM;
 
 /**
  * @internal
@@ -57,18 +62,36 @@ abstract class AbstractControlStructureSpacing implements Sniff
 	public const CODE_INCORRECT_LINES_COUNT_AFTER_CONTROL_STRUCTURE = 'IncorrectLinesCountAfterControlStructure';
 	public const CODE_INCORRECT_LINES_COUNT_AFTER_LAST_CONTROL_STRUCTURE = 'IncorrectLinesCountAfterLastControlStructure';
 
-	/** @var (string|int)[]|null */
-	private $normalizedTokensToCheck;
+	protected const KEYWORD_IF = 'if';
+	protected const KEYWORD_DO = 'do';
+	protected const KEYWORD_WHILE = 'while';
+	protected const KEYWORD_FOR = 'for';
+	protected const KEYWORD_FOREACH = 'foreach';
+	protected const KEYWORD_SWITCH = 'switch';
+	protected const KEYWORD_CASE = 'case';
+	protected const KEYWORD_DEFAULT = 'default';
+	protected const KEYWORD_TRY = 'try';
+	protected const KEYWORD_PARENT = 'parent';
+	protected const KEYWORD_GOTO = 'goto';
+	protected const KEYWORD_BREAK = 'break';
+	protected const KEYWORD_CONTINUE = 'continue';
+	protected const KEYWORD_RETURN = 'return';
+	protected const KEYWORD_THROW = 'throw';
+	protected const KEYWORD_YIELD = 'yield';
+	protected const KEYWORD_YIELD_FROM = 'yield_from';
+
+	/** @var array<(string|int)>|null */
+	private ?array $tokensToCheck = null;
 
 	/**
-	 * @return array<int|string>
+	 * @return list<string>
 	 */
-	abstract protected function getSupportedTokens(): array;
+	abstract protected function getSupportedKeywords(): array;
 
 	/**
-	 * @return string[]
+	 * @return list<string>
 	 */
-	abstract protected function getTokensToCheck(): array;
+	abstract protected function getKeywordsToCheck(): array;
 
 	abstract protected function getLinesCountBefore(): int;
 
@@ -79,16 +102,15 @@ abstract class AbstractControlStructureSpacing implements Sniff
 	abstract protected function getLinesCountAfterLast(File $phpcsFile, int $controlStructurePointer, int $controlStructureEndPointer): int;
 
 	/**
-	 * @return (int|string)[]
+	 * @return array<int, (int|string)>
 	 */
 	public function register(): array
 	{
-		return $this->getNormalizedTokensToCheck();
+		return $this->getTokensToCheck();
 	}
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $controlStructurePointer
 	 */
 	public function process(File $phpcsFile, $controlStructurePointer): void
@@ -107,7 +129,14 @@ abstract class AbstractControlStructureSpacing implements Sniff
 	{
 		$tokens = $phpcsFile->getTokens();
 
-		$nonWhitespacePointerBefore = TokenHelper::findPreviousExcluding($phpcsFile, T_WHITESPACE, $controlStructurePointer - 1);
+		if (in_array($tokens[$controlStructurePointer]['code'], [T_CASE, T_DEFAULT], true)) {
+			$pointerBefore = TokenHelper::findPreviousEffective($phpcsFile, $controlStructurePointer - 1);
+			if ($tokens[$pointerBefore]['code'] === T_COLON) {
+				return;
+			}
+		}
+
+		$nonWhitespacePointerBefore = TokenHelper::findPreviousNonWhitespace($phpcsFile, $controlStructurePointer - 1);
 
 		$controlStructureStartPointer = $controlStructurePointer;
 		$pointerBefore = $nonWhitespacePointerBefore;
@@ -124,23 +153,13 @@ abstract class AbstractControlStructureSpacing implements Sniff
 					$controlStructureStartPointer = array_key_exists('comment_opener', $tokens[$nonWhitespacePointerBefore])
 						? $tokens[$nonWhitespacePointerBefore]['comment_opener']
 						: CommentHelper::getMultilineCommentStartPointer($phpcsFile, $nonWhitespacePointerBefore);
-					$pointerBefore = TokenHelper::findPreviousExcluding($phpcsFile, T_WHITESPACE, $controlStructureStartPointer - 1);
+					$pointerBefore = TokenHelper::findPreviousNonWhitespace($phpcsFile, $controlStructureStartPointer - 1);
 				}
 				$pointerToCheckFirst = $pointerBefore;
 			}
 		}
 
 		$isFirstControlStructure = in_array($tokens[$pointerToCheckFirst]['code'], [T_OPEN_CURLY_BRACKET, T_COLON], true);
-
-		if (
-			$isFirstControlStructure
-			&& in_array($tokens[$controlStructurePointer]['code'], [T_CASE, T_DEFAULT], true)
-			&& array_key_exists('scope_condition', $tokens[$pointerBefore])
-			&& in_array($tokens[$tokens[$pointerBefore]['scope_condition']]['code'], [T_CASE, T_DEFAULT], true)
-		) {
-			$isFirstControlStructure = false;
-		}
-
 		$whitespaceBefore = '';
 
 		if ($tokens[$pointerBefore]['code'] === T_OPEN_TAG) {
@@ -168,13 +187,16 @@ abstract class AbstractControlStructureSpacing implements Sniff
 
 		$fix = $phpcsFile->addFixableError(
 			sprintf(
-				'Expected %d lines before "%s", found %d.',
+				'Expected %d line%s before "%s", found %d.',
 				$requiredLinesCountBefore,
+				$requiredLinesCountBefore === 1 ? '' : 's',
 				$tokens[$controlStructurePointer]['content'],
-				$actualLinesCountBefore
+				$actualLinesCountBefore,
 			),
 			$controlStructurePointer,
-			$isFirstControlStructure ? self::CODE_INCORRECT_LINES_COUNT_BEFORE_FIRST_CONTROL_STRUCTURE : self::CODE_INCORRECT_LINES_COUNT_BEFORE_CONTROL_STRUCTURE
+			$isFirstControlStructure
+				? self::CODE_INCORRECT_LINES_COUNT_BEFORE_FIRST_CONTROL_STRUCTURE
+				: self::CODE_INCORRECT_LINES_COUNT_BEFORE_CONTROL_STRUCTURE,
 		);
 
 		if (!$fix) {
@@ -185,7 +207,7 @@ abstract class AbstractControlStructureSpacing implements Sniff
 			$phpcsFile,
 			T_WHITESPACE,
 			$phpcsFile->eolChar,
-			$controlStructureStartPointer - 1
+			$controlStructureStartPointer - 1,
 		);
 
 		$phpcsFile->fixer->beginChangeset();
@@ -194,8 +216,8 @@ abstract class AbstractControlStructureSpacing implements Sniff
 			$phpcsFile->fixer->replaceToken($pointerBefore, '<?php');
 		}
 
-		for ($i = $pointerBefore + 1; $i <= $endOfLineBeforePointer; $i++) {
-			$phpcsFile->fixer->replaceToken($i, '');
+		if ($endOfLineBeforePointer !== null) {
+			FixerHelper::removeBetweenIncluding($phpcsFile, $pointerBefore + 1, $endOfLineBeforePointer);
 		}
 
 		$linesToAdd = $hasCommentWithLineEndBefore ? $requiredLinesCountBefore - 1 : $requiredLinesCountBefore;
@@ -210,6 +232,15 @@ abstract class AbstractControlStructureSpacing implements Sniff
 	{
 		$tokens = $phpcsFile->getTokens();
 
+		if (in_array($tokens[$controlStructurePointer]['code'], [T_CASE, T_DEFAULT], true)) {
+			$colonPointer = TokenHelper::findNext($phpcsFile, T_COLON, $controlStructurePointer + 1);
+			$pointerAfterColon = TokenHelper::findNextEffective($phpcsFile, $colonPointer + 1);
+
+			if (in_array($tokens[$pointerAfterColon]['code'], [T_CASE, T_DEFAULT], true)) {
+				return;
+			}
+		}
+
 		$controlStructureEndPointer = $this->findControlStructureEnd($phpcsFile, $controlStructurePointer);
 
 		$pointerAfterControlStructureEnd = TokenHelper::findNextEffective($phpcsFile, $controlStructureEndPointer + 1);
@@ -220,7 +251,7 @@ abstract class AbstractControlStructureSpacing implements Sniff
 			$controlStructureEndPointer = $pointerAfterControlStructureEnd;
 		}
 
-		$notWhitespacePointerAfter = TokenHelper::findNextExcluding($phpcsFile, T_WHITESPACE, $controlStructureEndPointer + 1);
+		$notWhitespacePointerAfter = TokenHelper::findNextNonWhitespace($phpcsFile, $controlStructureEndPointer + 1);
 
 		if ($notWhitespacePointerAfter === null) {
 			return;
@@ -230,16 +261,18 @@ abstract class AbstractControlStructureSpacing implements Sniff
 		$isCommentAfterOnSameLine = false;
 		$pointerAfter = $notWhitespacePointerAfter;
 
-		$isControlStructureEndAfterPointer = static function (int $pointer) use ($tokens, $controlStructurePointer): bool {
-			return in_array($tokens[$controlStructurePointer]['code'], [T_CASE, T_DEFAULT], true)
+		$isControlStructureEndAfterPointer = static fn (int $pointer): bool => in_array(
+			$tokens[$controlStructurePointer]['code'],
+			[T_CASE, T_DEFAULT],
+			true,
+		)
 				? $tokens[$pointer]['code'] === T_CLOSE_CURLY_BRACKET
 				: in_array($tokens[$pointer]['code'], [T_CLOSE_CURLY_BRACKET, T_CASE, T_DEFAULT], true);
-		};
 
 		if ($hasCommentAfter) {
 			if ($tokens[$notWhitespacePointerAfter]['line'] === $tokens[$controlStructureEndPointer]['line'] + 1) {
 				$commentEndPointer = CommentHelper::getCommentEndPointer($phpcsFile, $notWhitespacePointerAfter);
-				$pointerAfterComment = TokenHelper::findNextExcluding($phpcsFile, T_WHITESPACE, $commentEndPointer + 1);
+				$pointerAfterComment = TokenHelper::findNextNonWhitespace($phpcsFile, $commentEndPointer + 1);
 
 				if ($isControlStructureEndAfterPointer($pointerAfterComment)) {
 					$controlStructureEndPointer = $commentEndPointer;
@@ -247,7 +280,7 @@ abstract class AbstractControlStructureSpacing implements Sniff
 				}
 			} elseif ($tokens[$notWhitespacePointerAfter]['line'] === $tokens[$controlStructureEndPointer]['line']) {
 				$isCommentAfterOnSameLine = true;
-				$pointerAfter = TokenHelper::findNextExcluding($phpcsFile, T_WHITESPACE, $notWhitespacePointerAfter + 1);
+				$pointerAfter = TokenHelper::findNextNonWhitespace($phpcsFile, $notWhitespacePointerAfter + 1);
 			}
 		}
 
@@ -264,13 +297,16 @@ abstract class AbstractControlStructureSpacing implements Sniff
 
 		$fix = $phpcsFile->addFixableError(
 			sprintf(
-				'Expected %d lines after "%s", found %d.',
+				'Expected %d line%s after "%s", found %d.',
 				$requiredLinesCountAfter,
+				$requiredLinesCountAfter === 1 ? '' : 's',
 				$tokens[$controlStructurePointer]['content'],
-				$actualLinesCountAfter
+				$actualLinesCountAfter,
 			),
 			$controlStructurePointer,
-			$isLastControlStructure ? self::CODE_INCORRECT_LINES_COUNT_AFTER_LAST_CONTROL_STRUCTURE : self::CODE_INCORRECT_LINES_COUNT_AFTER_CONTROL_STRUCTURE
+			$isLastControlStructure
+				? self::CODE_INCORRECT_LINES_COUNT_AFTER_LAST_CONTROL_STRUCTURE
+				: self::CODE_INCORRECT_LINES_COUNT_AFTER_CONTROL_STRUCTURE,
 		);
 
 		if (!$fix) {
@@ -278,20 +314,21 @@ abstract class AbstractControlStructureSpacing implements Sniff
 		}
 
 		$replaceStartPointer = $isCommentAfterOnSameLine ? $notWhitespacePointerAfter : $controlStructureEndPointer;
-		$endOfLineBeforeAfterPointer = TokenHelper::findPreviousContent($phpcsFile, T_WHITESPACE, $phpcsFile->eolChar, $pointerAfter - 1);
+		$endOfLineBeforeAfterPointer = TokenHelper::findLastTokenOnPreviousLine($phpcsFile, $pointerAfter);
 
 		$phpcsFile->fixer->beginChangeset();
 
-		for ($i = $replaceStartPointer + 1; $i <= $endOfLineBeforeAfterPointer; $i++) {
-			$phpcsFile->fixer->replaceToken($i, '');
-		}
+		FixerHelper::removeBetweenIncluding($phpcsFile, $replaceStartPointer + 1, $endOfLineBeforeAfterPointer);
 
 		if ($isCommentAfterOnSameLine) {
 			for ($i = 0; $i < $requiredLinesCountAfter; $i++) {
 				$phpcsFile->fixer->addNewline($notWhitespacePointerAfter);
 			}
 		} else {
-			for ($i = 0; $i <= $requiredLinesCountAfter; $i++) {
+			$linesToAdd = substr($tokens[$controlStructureEndPointer]['content'], -strlen($phpcsFile->eolChar)) === $phpcsFile->eolChar
+				? $requiredLinesCountAfter - 1
+				: $requiredLinesCountAfter;
+			for ($i = 0; $i <= $linesToAdd; $i++) {
 				$phpcsFile->fixer->addNewline($controlStructureEndPointer);
 			}
 		}
@@ -300,35 +337,49 @@ abstract class AbstractControlStructureSpacing implements Sniff
 	}
 
 	/**
-	 * @return (int|string)[]
+	 * @return array<int, (int|string)>
 	 */
-	private function getNormalizedTokensToCheck(): array
+	private function getTokensToCheck(): array
 	{
-		if ($this->normalizedTokensToCheck === null) {
-			$supportedTokens = $this->getSupportedTokens();
+		if ($this->tokensToCheck === null) {
+			$supportedKeywords = $this->getSupportedKeywords();
+			$supportedTokens = [
+				self::KEYWORD_IF => T_IF,
+				self::KEYWORD_DO => T_DO,
+				self::KEYWORD_WHILE => T_WHILE,
+				self::KEYWORD_FOR => T_FOR,
+				self::KEYWORD_FOREACH => T_FOREACH,
+				self::KEYWORD_SWITCH => T_SWITCH,
+				self::KEYWORD_CASE => T_CASE,
+				self::KEYWORD_DEFAULT => T_DEFAULT,
+				self::KEYWORD_TRY => T_TRY,
+				self::KEYWORD_PARENT => T_PARENT,
+				self::KEYWORD_GOTO => T_GOTO,
+				self::KEYWORD_BREAK => T_BREAK,
+				self::KEYWORD_CONTINUE => T_CONTINUE,
+				self::KEYWORD_RETURN => T_RETURN,
+				self::KEYWORD_THROW => T_THROW,
+				self::KEYWORD_YIELD => T_YIELD,
+				self::KEYWORD_YIELD_FROM => T_YIELD_FROM,
+			];
 
-			$this->normalizedTokensToCheck = array_values(array_map(
-				static function (string $tokenCode) use ($supportedTokens) {
-					if (!defined($tokenCode)) {
-						throw new UndefinedKeywordTokenException($tokenCode);
+			$this->tokensToCheck = array_map(
+				static function (string $keyword) use ($supportedKeywords, $supportedTokens) {
+					if (!in_array($keyword, $supportedKeywords, true)) {
+						throw new UnsupportedKeywordException($keyword);
 					}
 
-					$const = constant($tokenCode);
-					if (!in_array($const, $supportedTokens, true)) {
-						throw new UnsupportedTokenException($tokenCode);
-					}
-
-					return $const;
+					return $supportedTokens[$keyword];
 				},
-				SniffSettingsHelper::normalizeArray($this->getTokensToCheck())
-			));
+				SniffSettingsHelper::normalizeArray($this->getKeywordsToCheck()),
+			);
 
-			if (count($this->normalizedTokensToCheck) === 0) {
-				$this->normalizedTokensToCheck = $supportedTokens;
+			if (count($this->tokensToCheck) === 0) {
+				$this->tokensToCheck = array_map(static fn (string $keyword) => $supportedTokens[$keyword], $supportedKeywords);
 			}
 		}
 
-		return $this->normalizedTokensToCheck;
+		return $this->tokensToCheck;
 	}
 
 	private function findControlStructureEnd(File $phpcsFile, int $controlStructurePointer): int
@@ -342,7 +393,7 @@ abstract class AbstractControlStructureSpacing implements Sniff
 
 			$pointerAfterParenthesisCloser = TokenHelper::findNextEffective(
 				$phpcsFile,
-				$tokens[$controlStructurePointer]['parenthesis_closer'] + 1
+				$tokens[$controlStructurePointer]['parenthesis_closer'] + 1,
 			);
 			if ($pointerAfterParenthesisCloser !== null && $tokens[$pointerAfterParenthesisCloser]['code'] === T_COLON) {
 				throw new Exception('"if" without curly braces is not supported.');
@@ -404,30 +455,48 @@ abstract class AbstractControlStructureSpacing implements Sniff
 				$phpcsFile,
 				[T_CASE, T_DEFAULT],
 				$controlStructurePointer + 1,
-				$tokens[$switchPointer]['scope_closer']
+				$tokens[$switchPointer]['scope_closer'],
 			);
 
 			foreach ($pointers as $pointer) {
 				if (TokenHelper::findPrevious($phpcsFile, T_SWITCH, $pointer - 1) === $switchPointer) {
-					return TokenHelper::findPreviousExcluding($phpcsFile, T_WHITESPACE, $pointer - 1);
+					$pointerBeforeCaseOrDefault = TokenHelper::findPreviousNonWhitespace($phpcsFile, $pointer - 1);
+					if (
+						in_array($tokens[$pointerBeforeCaseOrDefault]['code'], Tokens::$commentTokens, true)
+						&& $tokens[$pointerBeforeCaseOrDefault]['line'] + 1 === $tokens[$pointer]['line']
+					) {
+						$pointerBeforeCaseOrDefault = TokenHelper::findPreviousExcluding(
+							$phpcsFile,
+							T_WHITESPACE,
+							$pointerBeforeCaseOrDefault - 1,
+						);
+					}
+
+					return $pointerBeforeCaseOrDefault;
 				}
 			}
 
-			return TokenHelper::findPreviousExcluding($phpcsFile, T_WHITESPACE, $tokens[$switchPointer]['scope_closer'] - 1);
+			return TokenHelper::findPreviousNonWhitespace($phpcsFile, $tokens[$switchPointer]['scope_closer'] - 1);
 		}
 
 		$nextPointer = TokenHelper::findNext(
 			$phpcsFile,
 			[T_SEMICOLON, T_ANON_CLASS, T_CLOSURE, T_FN, T_OPEN_SHORT_ARRAY],
-			$controlStructurePointer + 1
+			$controlStructurePointer + 1,
 		);
 		if ($tokens[$nextPointer]['code'] === T_SEMICOLON) {
 			return $nextPointer;
 		}
 
-		$nextPointer = $tokens[$nextPointer]['code'] === T_OPEN_SHORT_ARRAY
-			? (int) TokenHelper::findNext($phpcsFile, T_SEMICOLON, $tokens[$nextPointer]['bracket_closer'] + 1)
-			: (int) TokenHelper::findNext($phpcsFile, T_SEMICOLON, $tokens[$nextPointer]['scope_closer'] + 1);
+		$scopeCloserPointer = $tokens[$nextPointer]['code'] === T_OPEN_SHORT_ARRAY
+			? $tokens[$nextPointer]['bracket_closer']
+			: $tokens[$nextPointer]['scope_closer'];
+
+		if ($tokens[$scopeCloserPointer]['code'] === T_SEMICOLON) {
+			return $scopeCloserPointer;
+		}
+
+		$nextPointer = TokenHelper::findNext($phpcsFile, T_SEMICOLON, $scopeCloserPointer + 1);
 
 		$level = $tokens[$controlStructurePointer]['level'];
 		while ($level !== $tokens[$nextPointer]['level']) {

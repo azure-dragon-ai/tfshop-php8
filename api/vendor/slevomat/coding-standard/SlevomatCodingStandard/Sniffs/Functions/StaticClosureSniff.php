@@ -6,7 +6,6 @@ use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use SlevomatCodingStandard\Helpers\VariableHelper;
-use const T_CLOSE_PARENTHESIS;
 use const T_CLOSURE;
 use const T_DOUBLE_QUOTED_STRING;
 use const T_FN;
@@ -34,7 +33,6 @@ class StaticClosureSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $closurePointer
 	 */
 	public function process(File $phpcsFile, $closurePointer): void
@@ -58,18 +56,13 @@ class StaticClosureSniff implements Sniff
 
 		$closureScopeOpenerPointer = $tokens[$closurePointer]['scope_opener'];
 		$closureScopeCloserPointer = $tokens[$closurePointer]['scope_closer'];
-		if ($tokens[$closureScopeCloserPointer]['code'] === T_CLOSE_PARENTHESIS) {
-			while ($tokens[$closureScopeCloserPointer]['parenthesis_opener'] > $closurePointer) {
-				$closureScopeCloserPointer = TokenHelper::findNext($phpcsFile, T_CLOSE_PARENTHESIS, $closureScopeCloserPointer + 1);
-			}
-		}
 
 		$thisPointer = TokenHelper::findNextContent(
 			$phpcsFile,
 			T_VARIABLE,
 			'$this',
 			$closureScopeOpenerPointer + 1,
-			$closureScopeCloserPointer
+			$closureScopeCloserPointer,
 		);
 		if ($thisPointer !== null) {
 			return;
@@ -79,7 +72,7 @@ class StaticClosureSniff implements Sniff
 			$phpcsFile,
 			T_DOUBLE_QUOTED_STRING,
 			$closureScopeOpenerPointer + 1,
-			$closureScopeCloserPointer
+			$closureScopeCloserPointer,
 		);
 		foreach ($stringPointers as $stringPointer) {
 			if (VariableHelper::isUsedInScopeInString($phpcsFile, '$this', $stringPointer)) {
@@ -95,7 +88,7 @@ class StaticClosureSniff implements Sniff
 		$fix = $phpcsFile->addFixableError(
 			'Closure not using "$this" should be declared static.',
 			$closurePointer,
-			self::CODE_CLOSURE_NOT_STATIC
+			self::CODE_CLOSURE_NOT_STATIC,
 		);
 
 		if (!$fix) {

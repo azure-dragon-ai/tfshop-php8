@@ -3,21 +3,20 @@
 namespace Knuckles\Scribe\Extracting\Strategies\UrlParameters;
 
 use Illuminate\Database\Eloquent\Model;
-use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Illuminate\Support\Str;
+use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Scribe\Extracting\ParamHelpers;
+use Knuckles\Scribe\Extracting\Shared\UrlParamsNormalizer;
 use Knuckles\Scribe\Extracting\Strategies\Strategy;
-use Knuckles\Scribe\Extracting\UrlParamsNormalizer;
 use Knuckles\Scribe\Tools\Utils;
+use Throwable;
 
 class GetFromLaravelAPI extends Strategy
 {
     use ParamHelpers;
 
-    public function __invoke(ExtractedEndpointData $endpointData, array $routeRules): ?array
+    public function __invoke(ExtractedEndpointData $endpointData, array $routeRules = []): ?array
     {
-        if (Utils::isLumen()) return null;
-
         $parameters = [];
 
         $path = $endpointData->uri;
@@ -35,7 +34,7 @@ class GetFromLaravelAPI extends Strategy
         }
 
         $parameters = $this->inferBetterTypesAndExamplesForEloquentUrlParameters($parameters, $endpointData);
-
+        $parameters = $this->inferBetterTypesAndExamplesForEnumUrlParameters($parameters, $endpointData);
         $parameters = $this->setTypesAndExamplesForOthers($parameters, $endpointData);
 
         return $parameters;
@@ -119,18 +118,33 @@ class GetFromLaravelAPI extends Strategy
             // If the routeKey is the same as the primary key in the database, use the PK's type.
             $routeKey = $modelInstance->getRouteKeyName();
             $type = $modelInstance->getKeyName() === $routeKey
-                ? $this->normalizeTypeName($modelInstance->getKeyType()) : 'string';
+                ? static::normalizeTypeName($modelInstance->getKeyType()) : 'string';
 
             $parameters[$paramName]['type'] = $type;
 
             try {
-                // todo: add some database tests
                 $parameters[$paramName]['example'] = $modelInstance::first()->$routeKey ?? null;
-            } catch (\Throwable $e) {
+            } catch (Throwable) {
                 $parameters[$paramName]['example'] = null;
             }
 
         }
+        return $parameters;
+    }
+
+    protected function inferBetterTypesAndExamplesForEnumUrlParameters(array $parameters, ExtractedEndpointData $endpointData): array
+    {
+        $typeHintedEnums = UrlParamsNormalizer::getTypeHintedEnums($endpointData->method);
+        foreach ($typeHintedEnums as $argumentName => $enum) {
+            $parameters[$argumentName]['type'] = static::normalizeTypeName($enum->getBackingType());
+
+            try {
+                $parameters[$argumentName]['example'] = $enum->getCases()[0]->getBackingValue();
+            } catch (Throwable) {
+                $parameters[$argumentName]['example'] = null;
+            }
+        }
+
         return $parameters;
     }
 
@@ -146,7 +160,7 @@ class GetFromLaravelAPI extends Strategy
                 $parameterRegex = $endpointData->route->wheres[$name] ?? null;
                 $parameters[$name]['example'] = $parameterRegex
                     ? $this->castToType($this->getFaker()->regexify($parameterRegex), $parameters[$name]['type'])
-                    : $this->generateDummyValue($parameters[$name]['type']);
+                    : $this->generateDummyValue($parameters[$name]['type'], hints: ['name' => $name]);
             }
         }
         return $parameters;
@@ -164,16 +178,18 @@ class GetFromLaravelAPI extends Strategy
      *
      * @return string|null
      */
-    protected function getNameOfUrlThing(string $url, string $paramName, string $alternateParamName = null): ?string
+    protected function getNameOfUrlThing(string $url, string $paramName, ?string $alternateParamName = null): ?string
     {
         $parts = explode("/", $url);
+        if (count($parts) === 1) return null; // URL was "/{thing}"
+
         $paramIndex = array_search("{{$paramName}}", $parts);
 
         if ($paramIndex === false) {
             $paramIndex = array_search("{{$alternateParamName}}", $parts);
         }
 
-        if ($paramIndex === false) return null;
+        if ($paramIndex === false || $paramIndex === 0) return null;
 
         $things = $parts[$paramIndex - 1];
         // Replace underscores/hyphens, so "side_projects" becomes "side project"
@@ -192,10 +208,14 @@ class GetFromLaravelAPI extends Strategy
         $className = str_replace(['-', '_', ' '], '', Str::title($urlThing));
         $rootNamespace = app()->getNamespace();
 
-        if (class_exists($class = "{$rootNamespace}Models\\" . $className)
+        if (class_exists($class = "{$rootNamespace}Models\\" . $className, autoload: false)
             // For the heathens that don't use a Models\ directory
-            || class_exists($class = $rootNamespace . $className)) {
-            $instance = new $class;
+            || class_exists($class = $rootNamespace . $className, autoload: false)) {
+            try {
+                $instance = new $class;
+            } catch (\Error) { // It might be an enum or some other non-instantiable class
+                return null;
+            }
             return $instance instanceof Model ? $instance : null;
         }
 

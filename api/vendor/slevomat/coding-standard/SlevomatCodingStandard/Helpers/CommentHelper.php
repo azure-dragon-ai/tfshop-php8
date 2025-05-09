@@ -3,7 +3,9 @@
 namespace SlevomatCodingStandard\Helpers;
 
 use PHP_CodeSniffer\Files\File;
+use PHP_CodeSniffer\Util\Tokens;
 use function array_key_exists;
+use function in_array;
 use function preg_match;
 use function strpos;
 use const T_COMMENT;
@@ -36,8 +38,23 @@ class CommentHelper
 			return null;
 		}
 
-		$nextPointerAfterComment = TokenHelper::findNextExcluding($phpcsFile, T_COMMENT, $commentStartPointer + 1);
-		return $nextPointerAfterComment - 1;
+		$commentEndPointer = $commentStartPointer;
+
+		for ($i = $commentStartPointer + 1; $i < $phpcsFile->numTokens; $i++) {
+			if ($tokens[$i]['code'] === T_COMMENT) {
+				$commentEndPointer = $i;
+				continue;
+			}
+
+			if (in_array($tokens[$i]['code'], Tokens::$phpcsCommentTokens, true)) {
+				$commentEndPointer = $i;
+				continue;
+			}
+
+			break;
+		}
+
+		return $commentEndPointer;
 	}
 
 	public static function getMultilineCommentStartPointer(File $phpcsFile, int $commentEndPointer): int

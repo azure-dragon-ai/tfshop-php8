@@ -4,12 +4,17 @@ namespace SlevomatCodingStandard\Sniffs\TypeHints;
 
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
-use SlevomatCodingStandard\Helpers\Annotation\GenericAnnotation;
+use PHPStan\PhpDocParser\Ast\Type\IdentifierTypeNode;
 use SlevomatCodingStandard\Helpers\AnnotationHelper;
-use SlevomatCodingStandard\Helpers\AnnotationTypeHelper;
+use SlevomatCodingStandard\Helpers\Attribute;
+use SlevomatCodingStandard\Helpers\AttributeHelper;
 use SlevomatCodingStandard\Helpers\SuppressHelper;
+use SlevomatCodingStandard\Helpers\TokenHelper;
+use function array_map;
+use function in_array;
 use function sprintf;
 use function strtolower;
+use const T_ATTRIBUTE;
 use const T_DOC_COMMENT_OPEN_TAG;
 
 class DisallowMixedTypeHintSniff implements Sniff
@@ -31,7 +36,6 @@ class DisallowMixedTypeHintSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $docCommentOpenPointer
 	 */
 	public function process(File $phpcsFile, $docCommentOpenPointer): void
@@ -39,38 +43,32 @@ class DisallowMixedTypeHintSniff implements Sniff
 		if (SuppressHelper::isSniffSuppressed(
 			$phpcsFile,
 			$docCommentOpenPointer,
-			$this->getSniffName(self::CODE_DISALLOWED_MIXED_TYPE_HINT)
+			$this->getSniffName(self::CODE_DISALLOWED_MIXED_TYPE_HINT),
 		)) {
+			return;
+		}
+
+		if ($this->targetHasOverrideAttribute($phpcsFile, $docCommentOpenPointer)) {
 			return;
 		}
 
 		$annotations = AnnotationHelper::getAnnotations($phpcsFile, $docCommentOpenPointer);
 
-		foreach ($annotations as $annotationByName) {
-			foreach ($annotationByName as $annotation) {
-				if ($annotation instanceof GenericAnnotation) {
+		foreach ($annotations as $annotation) {
+			$identifierTypeNodes = AnnotationHelper::getAnnotationNodesByType($annotation->getNode(), IdentifierTypeNode::class);
+
+			foreach ($identifierTypeNodes as $typeHintNode) {
+				$typeHint = $typeHintNode->name;
+
+				if (strtolower($typeHint) !== 'mixed') {
 					continue;
 				}
 
-				if ($annotation->isInvalid()) {
-					continue;
-				}
-
-				foreach (AnnotationHelper::getAnnotationTypes($annotation) as $annotationType) {
-					foreach (AnnotationTypeHelper::getIdentifierTypeNodes($annotationType) as $typeHintNode) {
-						$typeHint = AnnotationTypeHelper::getTypeHintFromNode($typeHintNode);
-
-						if (strtolower($typeHint) !== 'mixed') {
-							continue;
-						}
-
-						$phpcsFile->addError(
-							'Usage of "mixed" type hint is disallowed.',
-							$annotation->getStartPointer(),
-							self::CODE_DISALLOWED_MIXED_TYPE_HINT
-						);
-					}
-				}
+				$phpcsFile->addError(
+					'Usage of "mixed" type hint is disallowed.',
+					$annotation->getStartPointer(),
+					self::CODE_DISALLOWED_MIXED_TYPE_HINT,
+				);
 			}
 		}
 	}
@@ -78,6 +76,23 @@ class DisallowMixedTypeHintSniff implements Sniff
 	private function getSniffName(string $sniffName): string
 	{
 		return sprintf('%s.%s', self::NAME, $sniffName);
+	}
+
+	private function targetHasOverrideAttribute(File $phpcsFile, int $docCommentOpenPointer): bool
+	{
+		$tokens = $phpcsFile->getTokens();
+		$nextPointer = TokenHelper::findNextEffective($phpcsFile, $docCommentOpenPointer + 1);
+
+		if ($nextPointer === null || $tokens[$nextPointer]['code'] !== T_ATTRIBUTE) {
+			return false;
+		}
+
+		$attributeNames = array_map(
+			static fn (Attribute $name): string => $name->getName(),
+			AttributeHelper::getAttributes($phpcsFile, $nextPointer),
+		);
+
+		return in_array('Override', $attributeNames, true) || in_array('\Override', $attributeNames, true);
 	}
 
 }

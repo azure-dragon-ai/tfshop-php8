@@ -5,11 +5,14 @@ namespace SlevomatCodingStandard\Sniffs\Classes;
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
 use SlevomatCodingStandard\Helpers\DocCommentHelper;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\IndentationHelper;
+use SlevomatCodingStandard\Helpers\PropertyHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use function count;
 use function sprintf;
 use function trim;
+use const T_ARRAY;
 use const T_AS;
 use const T_COMMA;
 use const T_FUNCTION;
@@ -36,7 +39,6 @@ class DisallowMultiPropertyDefinitionSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $visibilityPointer
 	 */
 	public function process(File $phpcsFile, $visibilityPointer): void
@@ -49,7 +51,11 @@ class DisallowMultiPropertyDefinitionSniff implements Sniff
 		}
 
 		$propertyPointer = TokenHelper::findNext($phpcsFile, [T_VARIABLE, T_FUNCTION], $visibilityPointer + 1);
-		if ($propertyPointer === null || $tokens[$propertyPointer]['code'] === T_FUNCTION) {
+		if (
+			$propertyPointer === null
+			|| $tokens[$propertyPointer]['code'] !== T_VARIABLE
+			|| !PropertyHelper::isProperty($phpcsFile, $propertyPointer)
+		) {
 			return;
 		}
 
@@ -57,7 +63,7 @@ class DisallowMultiPropertyDefinitionSniff implements Sniff
 		$commaPointers = [];
 		$nextPointer = $propertyPointer;
 		do {
-			$nextPointer = TokenHelper::findNext($phpcsFile, [T_COMMA, T_OPEN_SHORT_ARRAY], $nextPointer + 1, $semicolonPointer);
+			$nextPointer = TokenHelper::findNext($phpcsFile, [T_COMMA, T_OPEN_SHORT_ARRAY, T_ARRAY], $nextPointer + 1, $semicolonPointer);
 
 			if ($nextPointer === null) {
 				break;
@@ -65,6 +71,11 @@ class DisallowMultiPropertyDefinitionSniff implements Sniff
 
 			if ($tokens[$nextPointer]['code'] === T_OPEN_SHORT_ARRAY) {
 				$nextPointer = $tokens[$nextPointer]['bracket_closer'];
+				continue;
+			}
+
+			if ($tokens[$nextPointer]['code'] === T_ARRAY) {
+				$nextPointer = $tokens[$nextPointer]['parenthesis_closer'];
 				continue;
 			}
 
@@ -79,7 +90,7 @@ class DisallowMultiPropertyDefinitionSniff implements Sniff
 		$fix = $phpcsFile->addFixableError(
 			'Use of multi property definition is disallowed.',
 			$visibilityPointer,
-			self::CODE_DISALLOWED_MULTI_PROPERTY_DEFINITION
+			self::CODE_DISALLOWED_MULTI_PROPERTY_DEFINITION,
 		);
 		if (!$fix) {
 			return;
@@ -105,7 +116,7 @@ class DisallowMultiPropertyDefinitionSniff implements Sniff
 			$pointerAfterTypeHint = TokenHelper::findNextEffective($phpcsFile, $typeHintEndPointer + 1);
 		}
 
-		$docCommentPointer = DocCommentHelper::findDocCommentOpenToken($phpcsFile, $propertyPointer);
+		$docCommentPointer = DocCommentHelper::findDocCommentOpenPointer($phpcsFile, $propertyPointer);
 		$docComment = $docCommentPointer !== null
 			? trim(TokenHelper::getContent($phpcsFile, $docCommentPointer, $tokens[$docCommentPointer]['comment_closer']))
 			: null;
@@ -121,42 +132,35 @@ class DisallowMultiPropertyDefinitionSniff implements Sniff
 		$phpcsFile->fixer->beginChangeset();
 
 		$phpcsFile->fixer->addContent($visibilityPointer, ' ');
-		for ($i = $visibilityPointer + 1; $i < $pointerAfterVisibility; $i++) {
-			$phpcsFile->fixer->replaceToken($i, '');
-		}
+
+		FixerHelper::removeBetween($phpcsFile, $visibilityPointer, $pointerAfterVisibility);
 
 		if ($typeHint !== null) {
 			$phpcsFile->fixer->addContent($typeHintEndPointer, ' ');
-			for ($i = $typeHintEndPointer + 1; $i < $pointerAfterTypeHint; $i++) {
-				$phpcsFile->fixer->replaceToken($i, '');
-			}
+			FixerHelper::removeBetween($phpcsFile, $typeHintEndPointer, $pointerAfterTypeHint);
 		}
 
 		foreach ($commaPointers as $commaPointer) {
-			for ($i = $data[$commaPointer]['pointerBeforeComma'] + 1; $i < $commaPointer; $i++) {
-				$phpcsFile->fixer->replaceToken($i, '');
-			}
+			FixerHelper::removeBetween($phpcsFile, $data[$commaPointer]['pointerBeforeComma'], $commaPointer);
 
 			$phpcsFile->fixer->replaceToken(
 				$commaPointer,
 				sprintf(
 					';%s%s%s%s%s ',
 					$phpcsFile->eolChar,
-					$docComment !== null ? sprintf('%s%s%s', $indentation, $docComment, $phpcsFile->eolChar) : '',
+					$docComment !== null
+						? sprintf('%s%s%s', $indentation, $docComment, $phpcsFile->eolChar)
+						: '',
 					$indentation,
 					$visibility,
-					$typeHint !== null ? sprintf(' %s', $typeHint) : ''
-				)
+					$typeHint !== null ? sprintf(' %s', $typeHint) : '',
+				),
 			);
 
-			for ($i = $commaPointer + 1; $i < $data[$commaPointer]['pointerAfterComma']; $i++) {
-				$phpcsFile->fixer->replaceToken($i, '');
-			}
+			FixerHelper::removeBetween($phpcsFile, $commaPointer, $data[$commaPointer]['pointerAfterComma']);
 		}
 
-		for ($i = $pointerBeforeSemicolon + 1; $i < $semicolonPointer; $i++) {
-			$phpcsFile->fixer->replaceToken($i, '');
-		}
+		FixerHelper::removeBetween($phpcsFile, $pointerBeforeSemicolon, $semicolonPointer);
 
 		$phpcsFile->fixer->endChangeset();
 	}

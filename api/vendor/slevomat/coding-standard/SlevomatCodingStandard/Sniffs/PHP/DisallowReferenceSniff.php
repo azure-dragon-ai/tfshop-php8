@@ -37,7 +37,6 @@ class DisallowReferenceSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $referencePointer
 	 */
 	public function process(File $phpcsFile, $referencePointer): void
@@ -61,7 +60,7 @@ class DisallowReferenceSniff implements Sniff
 					$phpcsFile->addError(
 						'Passing by reference is disallowed.',
 						$referencePointer,
-						self::CODE_DISALLOWED_PASSING_BY_REFERENCE
+						self::CODE_DISALLOWED_PASSING_BY_REFERENCE,
 					);
 					return;
 				}
@@ -75,7 +74,7 @@ class DisallowReferenceSniff implements Sniff
 				$phpcsFile->addError(
 					'Inheriting variable by reference is disallowed.',
 					$referencePointer,
-					self::CODE_DISALLOWED_INHERITING_VARIABLE_BY_REFERENCE
+					self::CODE_DISALLOWED_INHERITING_VARIABLE_BY_REFERENCE,
 				);
 				return;
 			}

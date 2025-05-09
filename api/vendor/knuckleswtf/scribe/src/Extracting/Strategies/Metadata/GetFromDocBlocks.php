@@ -9,7 +9,7 @@ use Mpociot\Reflection\DocBlock;
 
 class GetFromDocBlocks extends Strategy
 {
-    public function __invoke(ExtractedEndpointData $endpointData, array $routeRules): array
+    public function __invoke(ExtractedEndpointData $endpointData, array $routeRules = []): array
     {
         $docBlocks = RouteDocBlocker::getDocBlocksFromRoute($endpointData->route);
         $methodDocBlock = $docBlocks['method'];
@@ -20,18 +20,23 @@ class GetFromDocBlocks extends Strategy
 
     public function getMetadataFromDocBlock(DocBlock $methodDocBlock, DocBlock $classDocBlock): array
     {
-        [$routeGroupName, $routeGroupDescription, $routeTitle] = $this->getRouteGroupDescriptionAndTitle($methodDocBlock, $classDocBlock);
+        [$groupName, $groupDescription, $title] = $this->getEndpointGroupAndTitleDetails($methodDocBlock, $classDocBlock);
 
-        return [
-            'groupName' => $routeGroupName,
-            'groupDescription' => $routeGroupDescription,
-            'title' => $routeTitle ?: $methodDocBlock->getShortDescription(),
+        $metadata = [
+            'groupName' => $groupName,
+            'groupDescription' => $groupDescription,
+            'subgroup' => $this->getEndpointSubGroup($methodDocBlock, $classDocBlock),
+            'subgroupDescription' => $this->getEndpointSubGroupDescription($methodDocBlock, $classDocBlock),
+            'title' => $title ?: $methodDocBlock->getShortDescription(),
             'description' => $methodDocBlock->getLongDescription()->getContents(),
-            'authenticated' => $this->getAuthStatusFromDocBlock($methodDocBlock, $classDocBlock),
         ];
+        if (!is_null($authStatus = $this->getAuthStatusFromDocBlock($methodDocBlock, $classDocBlock))) {
+            $metadata['authenticated'] = $authStatus;
+        }
+        return $metadata;
     }
 
-    protected function getAuthStatusFromDocBlock(DocBlock $methodDocBlock, DocBlock $classDocBlock = null): bool
+    protected function getAuthStatusFromDocBlock(DocBlock $methodDocBlock, ?DocBlock $classDocBlock = null): ?bool
     {
         foreach ($methodDocBlock->getTags() as $tag) {
             if (strtolower($tag->getName()) === 'authenticated') {
@@ -45,60 +50,90 @@ class GetFromDocBlocks extends Strategy
 
         return $classDocBlock
             ? $this->getAuthStatusFromDocBlock($classDocBlock)
-            : $this->config->get('auth.default', false);
+            : null;
     }
 
     /**
-     * @param DocBlock $methodDocBlock
-     * @param DocBlock $controllerDocBlock
-     *
-     * @return array The route group name, the group description, and the route title
+     * @return array The endpoint's group name, the group description, and the endpoint title
      */
-    protected function getRouteGroupDescriptionAndTitle(DocBlock $methodDocBlock, DocBlock $controllerDocBlock)
+    protected function getEndpointGroupAndTitleDetails(DocBlock $methodDocBlock, DocBlock $controllerDocBlock)
     {
-        // @group tag on the method overrides that on the controller
-        if (!empty($methodDocBlock->getTags())) {
-            foreach ($methodDocBlock->getTags() as $tag) {
-                if ($tag->getName() === 'group') {
-                    $routeGroupParts = explode("\n", trim($tag->getContent()));
-                    $routeGroupName = array_shift($routeGroupParts);
-                    $routeGroupDescription = trim(implode("\n", $routeGroupParts));
+        foreach ($methodDocBlock->getTags() as $tag) {
+            if ($tag->getName() === 'group') {
+                $endpointGroupParts = explode("\n", trim($tag->getContent()));
+                $endpointGroupName = array_shift($endpointGroupParts);
+                $endpointGroupDescription = trim(implode("\n", $endpointGroupParts));
 
-                    // If the route has no title (the methodDocBlock's "short description"),
-                    // we'll assume the routeGroupDescription is actually the title
-                    // Something like this:
-                    // /**
-                    //   * Fetch cars. <-- This is route title.
-                    //   * @group Cars <-- This is group name.
-                    //   * APIs for cars. <-- This is group description (not required).
-                    //   **/
-                    // VS
-                    // /**
-                    //   * @group Cars <-- This is group name.
-                    //   * Fetch cars. <-- This is route title, NOT group description.
-                    //   **/
+                // If the endpoint has no title (the methodDocBlock's "short description"),
+                // we'll assume the endpointGroupDescription is actually the title
+                // Something like this:
+                // /**
+                //   * Fetch cars. <-- This is endpoint title.
+                //   * @group Cars <-- This is group name.
+                //   * APIs for cars. <-- This is group description (not required).
+                //   **/
+                // VS
+                // /**
+                //   * @group Cars <-- This is group name.
+                //   * Fetch cars. <-- This is endpoint title, NOT group description.
+                //   **/
 
-                    // BTW, this is a spaghetti way of doing this.
-                    // It shall be refactored soon. Deus vult!💪
-                    if (empty($methodDocBlock->getShortDescription())) {
-                        return [$routeGroupName, '', $routeGroupDescription];
-                    }
-
-                    return [$routeGroupName, $routeGroupDescription, $methodDocBlock->getShortDescription()];
+                // BTW, this is a spaghetti way of doing this.
+                // It shall be refactored soon. Deus vult!💪
+                // ...Or maybe not
+                if (empty($methodDocBlock->getShortDescription())) {
+                    return [$endpointGroupName, '', $endpointGroupDescription];
                 }
+
+                return [$endpointGroupName, $endpointGroupDescription, $methodDocBlock->getShortDescription()];
+            }
+        }
+
+        // Fall back to the controller
+        foreach ($controllerDocBlock->getTags() as $tag) {
+            if ($tag->getName() === 'group') {
+                $endpointGroupParts = explode("\n", trim($tag->getContent()));
+                $endpointGroupName = array_shift($endpointGroupParts);
+                $endpointGroupDescription = implode("\n", $endpointGroupParts);
+
+                return [$endpointGroupName, $endpointGroupDescription, $methodDocBlock->getShortDescription()];
+            }
+        }
+
+        return [null, '', $methodDocBlock->getShortDescription()];
+    }
+
+    protected function getEndpointSubGroup(DocBlock $methodDocBlock, DocBlock $controllerDocBlock): ?string
+    {
+        foreach ($methodDocBlock->getTags() as $tag) {
+            if (strtolower($tag->getName()) === 'subgroup') {
+                return trim($tag->getContent());
             }
         }
 
         foreach ($controllerDocBlock->getTags() as $tag) {
-            if ($tag->getName() === 'group') {
-                $routeGroupParts = explode("\n", trim($tag->getContent()));
-                $routeGroupName = array_shift($routeGroupParts);
-                $routeGroupDescription = implode("\n", $routeGroupParts);
-
-                return [$routeGroupName, $routeGroupDescription, $methodDocBlock->getShortDescription()];
+            if (strtolower($tag->getName()) === 'subgroup') {
+                return trim($tag->getContent());
             }
         }
 
-        return [$this->config->get('default_group'), '', $methodDocBlock->getShortDescription()];
+        return null;
+    }
+
+    protected function getEndpointSubGroupDescription(DocBlock $methodDocBlock, DocBlock $controllerDocBlock): ?string
+    {
+        foreach ($methodDocBlock->getTags() as $tag) {
+            if (strtolower($tag->getName()) === 'subgroupdescription') {
+                return trim($tag->getContent());
+            }
+        }
+
+        foreach ($controllerDocBlock->getTags() as $tag) {
+            if (strtolower($tag->getName()) === 'subgroupdescription') {
+                return trim($tag->getContent());
+            }
+        }
+
+        return null;
     }
 }

@@ -3,8 +3,10 @@
 namespace SlevomatCodingStandard\Helpers;
 
 use PHP_CodeSniffer\Files\File;
+use function array_filter;
 use function array_reverse;
 use function array_slice;
+use function array_values;
 use function count;
 use function defined;
 use function explode;
@@ -22,6 +24,8 @@ use const T_NS_SEPARATOR;
  * http://php.net/manual/en/language.namespaces.rules.php
  *
  * "Canonical" is a fully qualified name without the leading backslash.
+ *
+ * @internal
  */
 class NamespaceHelper
 {
@@ -29,13 +33,22 @@ class NamespaceHelper
 	public const NAMESPACE_SEPARATOR = '\\';
 
 	/**
-	 * @param File $phpcsFile
-	 * @return int[]
+	 * @return list<int>
 	 */
 	public static function getAllNamespacesPointers(File $phpcsFile): array
 	{
-		$lazyValue = static function () use ($phpcsFile): array {
-			return TokenHelper::findNextAll($phpcsFile, T_NAMESPACE, 0);
+		$tokens = $phpcsFile->getTokens();
+		$lazyValue = static function () use ($phpcsFile, $tokens): array {
+			$all = TokenHelper::findNextAll($phpcsFile, T_NAMESPACE, 0);
+			$all = array_filter(
+				$all,
+				static function ($pointer) use ($phpcsFile, $tokens) {
+					$next = TokenHelper::findNextEffective($phpcsFile, $pointer + 1);
+					return $next === null || $tokens[$next]['code'] !== T_NS_SEPARATOR;
+				},
+			);
+
+			return array_values($all);
 		};
 
 		return SniffLocalCache::getAndSetIfNotCached($phpcsFile, 'namespacePointers', $lazyValue);
@@ -48,13 +61,7 @@ class NamespaceHelper
 
 	public static function isFullyQualifiedPointer(File $phpcsFile, int $pointer): bool
 	{
-		$fullyQualifiedTokenCodes = [T_NS_SEPARATOR];
-
-		if (defined('T_NAME_FULLY_QUALIFIED')) {
-			$fullyQualifiedTokenCodes[] = T_NAME_FULLY_QUALIFIED;
-		}
-
-		return in_array($phpcsFile->getTokens()[$pointer]['code'], $fullyQualifiedTokenCodes, true);
+		return in_array($phpcsFile->getTokens()[$pointer]['code'], [T_NS_SEPARATOR, T_NAME_FULLY_QUALIFIED], true);
 	}
 
 	public static function getFullyQualifiedTypeName(string $typeName): string
@@ -74,8 +81,7 @@ class NamespaceHelper
 	}
 
 	/**
-	 * @param string $name
-	 * @return string[]
+	 * @return list<string>
 	 */
 	public static function getNameParts(string $name): array
 	{
@@ -96,7 +102,7 @@ class NamespaceHelper
 		$namespaceNameEndPointer = TokenHelper::findNextExcluding(
 			$phpcsFile,
 			TokenHelper::getNameTokenCodes(),
-			$namespaceNameStartPointer + 1
+			$namespaceNameStartPointer + 1,
 		) - 1;
 
 		return TokenHelper::getContent($phpcsFile, $namespaceNameStartPointer, $namespaceNameEndPointer);
@@ -144,13 +150,13 @@ class NamespaceHelper
 	{
 		return StringHelper::startsWith(
 			self::normalizeToCanonicalName($typeName) . '\\',
-			$namespace . '\\'
+			$namespace . '\\',
 		);
 	}
 
 	public static function resolveClassName(File $phpcsFile, string $nameAsReferencedInFile, int $currentPointer): string
 	{
-		return self::resolveName($phpcsFile, $nameAsReferencedInFile, ReferencedName::TYPE_DEFAULT, $currentPointer);
+		return self::resolveName($phpcsFile, $nameAsReferencedInFile, ReferencedName::TYPE_CLASS, $currentPointer);
 	}
 
 	public static function resolveName(File $phpcsFile, string $nameAsReferencedInFile, string $type, int $currentPointer): string
@@ -175,11 +181,16 @@ class NamespaceHelper
 				self::NAMESPACE_SEPARATOR,
 				$useStatements[$firstPartUniqueId]->getFullyQualifiedTypeName(),
 				self::NAMESPACE_SEPARATOR,
-				implode(self::NAMESPACE_SEPARATOR, array_slice($nameParts, 1))
+				implode(self::NAMESPACE_SEPARATOR, array_slice($nameParts, 1)),
 			);
 		}
 
 		$name = sprintf('%s%s', self::NAMESPACE_SEPARATOR, $nameAsReferencedInFile);
+
+		if ($type === ReferencedName::TYPE_CONSTANT && defined($name)) {
+			return $name;
+		}
+
 		$namespaceName = self::findCurrentNamespaceName($phpcsFile, $currentPointer);
 		if ($namespaceName !== null) {
 			$name = sprintf('%s%s%s', self::NAMESPACE_SEPARATOR, $namespaceName, $name);

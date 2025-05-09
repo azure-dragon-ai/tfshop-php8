@@ -15,20 +15,26 @@
         }
     ],
     "require": {
+        "ext-openssl": "*",
+        "ext-curl": "*",
         "ext-json": "*",
-        "php": "^7.0",
-        "league/flysystem": "^1.0",
-        "aliyuncs/oss-sdk-php": "^2.3",
-        "nesbot/carbon": "^1.24.1 || ^2.0"
+        "php": "^8.0.2",
+        "league/flysystem": "^3.0",
+        "aliyuncs/oss-sdk-php": "^2"
     },
     "autoload": {
         "psr-4": {
             "Iidestiny\\Flysystem\\Oss\\": "src"
         }
     },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
     "require-dev": {
-        "mockery/mockery": "^1.2",
-        "phpunit/phpunit": "^6.5",
+        "mockery/mockery": "^1.5",
+        "phpunit/phpunit": "^9.5",
         "symfony/var-dumper": "^3.4"
     }
 }

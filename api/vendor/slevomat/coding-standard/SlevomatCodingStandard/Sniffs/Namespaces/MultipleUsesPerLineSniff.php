@@ -27,15 +27,11 @@ class MultipleUsesPerLineSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $usePointer
 	 */
 	public function process(File $phpcsFile, $usePointer): void
 	{
-		if (
-			UseStatementHelper::isAnonymousFunctionUse($phpcsFile, $usePointer)
-			|| UseStatementHelper::isTraitUse($phpcsFile, $usePointer)
-		) {
+		if (!UseStatementHelper::isImportUse($phpcsFile, $usePointer)) {
 			return;
 		}
 

@@ -4,28 +4,59 @@ namespace Knuckles\Scribe\Extracting;
 
 use Faker\Factory;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 
 trait ParamHelpers
 {
 
+    protected function getFakeFactoryByName(string $name): ?\Closure
+    {
+        $faker = $this->getFaker();
+
+        $name = strtolower(array_reverse(explode('.', $name))[0]);
+        $normalizedName = match (true) {
+            Str::endsWith($name, ['email', 'email_address']) => 'email',
+            Str::endsWith($name, ['uuid']) => 'uuid',
+            Str::endsWith($name, ['url']) => 'url',
+            Str::endsWith($name, ['locale']) => 'locale',
+            Str::endsWith($name, ['timezone']) => 'timezone',
+            default => $name,
+        };
+
+        return match ($normalizedName) {
+            'email' => fn() => $faker->safeEmail(),
+            'password', 'pwd' => fn() => $faker->password(),
+            'url' => fn() => $faker->url(),
+            'description' => fn() => $faker->sentence(),
+            'uuid' => fn() => $faker->uuid(),
+            'locale' => fn() => $faker->locale(),
+            'timezone' => fn() => $faker->timezone(),
+            default => null,
+        };
+    }
+
     protected function getFaker(): \Faker\Generator
     {
         $faker = Factory::create();
-        if ($this->config->get('faker_seed')) {
-            $faker->seed($this->config->get('faker_seed'));
+        if ($seed = $this->config->get('examples.faker_seed')) {
+            $faker->seed($seed);
         }
         return $faker;
     }
 
-    protected function generateDummyValue(string $type, int $size = null)
+    protected function generateDummyValue(string $type, array $hints = [])
     {
-        $fakeFactory = $this->getDummyValueGenerator($type, $size);
+        if(!empty($hints['enumValues'])) {
+            return Arr::random($hints['enumValues']);
+        }
+
+        $fakeFactory = $this->getDummyValueGenerator($type, $hints);
 
         return $fakeFactory();
     }
 
-    protected function getDummyValueGenerator(string $type, int $size = null): \Closure
+    protected function getDummyValueGenerator(string $type, array $hints = []): \Closure
     {
         $baseType = $type;
         $isListType = false;
@@ -35,54 +66,53 @@ trait ParamHelpers
             $isListType = true;
         }
 
+        $size = $hints['size'] ?? null;
         if ($isListType) {
-            // Return a one-array item for a list.
-            return fn() => [$this->generateDummyValue($baseType)];
+            // Return a one-array item for a list by default.
+            return $size
+                ? fn() => [$this->generateDummyValue($baseType, range(0, min($size - 1, 5)))]
+                : fn() => [$this->generateDummyValue($baseType, $hints)];
+        }
+
+        if (($hints['name'] ?? false) && $baseType != 'file') {
+            $fakeFactoryByName = $this->getFakeFactoryByName($hints['name']);
+            if ($fakeFactoryByName) return $fakeFactoryByName;
         }
 
         $faker = $this->getFaker();
+        $min = $hints['min'] ?? null;
+        $max = $hints['max'] ?? null;
+        // If max and min were provided, the override size.
+        $isExactSize = is_null($min) && is_null($max) && !is_null($size);
 
-        $fakeFactories = [
-            'integer' => fn() => $size ?: $faker->numberBetween(1, 20),
-            'number' => fn() => $size ?: $faker->randomFloat(),
+        $fakeFactoriesByType = [
+            'integer' => function () use ($size, $isExactSize, $max, $faker, $min) {
+                if ($isExactSize) return $size;
+                return $max ? $faker->numberBetween((int)$min, (int)$max) : $faker->numberBetween(1, 20);
+            },
+            'number' => function () use ($size, $isExactSize, $max, $faker, $min) {
+                if ($isExactSize) return $size;
+                return $max ? $faker->numberBetween((int)$min, (int)$max) : $faker->randomFloat();
+            },
             'boolean' => fn() => $faker->boolean(),
             'string' => fn() => $size ? $faker->lexify(str_repeat("?", $size)) : $faker->word(),
             'object' => fn() => [],
             'file' => fn() => UploadedFile::fake()->create('test.jpg')->size($size ?: 10),
         ];
 
-        return $fakeFactories[$baseType] ?? $fakeFactories['string'];
+        return $fakeFactoriesByType[$baseType] ?? $fakeFactoriesByType['string'];
     }
 
-    private function getDummyDataGeneratorBetween(string $type, $min, $max = null): \Closure
+    private function getDummyDataGeneratorBetween(string $type, $min, $max = 90, ?string $fieldName = null): \Closure
     {
-        $baseType = $type;
-        $isListType = false;
-
-        if (Str::endsWith($type, '[]')) {
-            $baseType = strtolower(substr($type, 0, strlen($type) - 2));
-            $isListType = true;
-        }
-
-        $randomSize = $this->getFaker()->numberBetween($min, $max);
-
-        if ($isListType) {
-            return fn() => array_map(
-                fn() => $this->generateDummyValue($baseType),
-                range(0, $randomSize - 1)
-            );
-        }
-
-        $faker = $this->getFaker();
-
-        $fakeFactories = [
-            'integer' => fn() => $faker->numberBetween((int)$min, (int)$max),
-            'number' => fn() => $faker->numberBetween((int)$min, (int)$max),
-            'string' => fn() => $faker->lexify(str_repeat("?", $randomSize)),
-            'file' => fn() => UploadedFile::fake()->create('test.jpg')->size($randomSize),
+        $hints = [
+            'name' => $fieldName,
+            'size' => $this->getFaker()->numberBetween($min, $max),
+            'min' => $min,
+            'max' => $max,
         ];
 
-        return $fakeFactories[$baseType] ?? $fakeFactories['string'];
+        return $this->getDummyValueGenerator($type, $hints);
     }
 
     protected function isSupportedTypeInDocBlocks(string $type): bool
@@ -164,30 +194,22 @@ trait ParamHelpers
      *
      * @return string
      */
-    protected function normalizeTypeName(?string $typeName, $value = null): string
+    public static function normalizeTypeName(?string $typeName, $value = null): string
     {
         if (!$typeName) {
             return 'string';
         }
 
         $base = str_replace('[]', '', strtolower($typeName));
-        switch ($base) {
-            case 'int':
-                return str_replace($base, 'integer', $typeName);
-            case 'float':
-            case 'double':
-                return str_replace($base, 'number', $typeName);
-            case 'bool':
-                return str_replace($base, 'boolean', $typeName);
-            case 'array':
-                if (empty($value) || array_keys($value)[0] === 0) {
-                    return $this->normalizeTypeName(gettype($value[0] ?? '')).'[]';
-                } else {
-                    return 'object';
-                }
-            default:
-                return $typeName;
-        }
+        return match ($base) {
+            'bool' => str_replace($base, 'boolean', $typeName),
+            'int' => str_replace($base, 'integer', $typeName),
+            'float', 'double' => str_replace($base, 'number', $typeName),
+            'array' => (empty($value) || array_keys($value)[0] === 0)
+                ? static::normalizeTypeName(gettype($value[0] ?? '')) . '[]'
+                : 'object',
+            default => $typeName
+        };
     }
 
     /**
@@ -214,14 +236,32 @@ trait ParamHelpers
      */
     protected function parseExampleFromParamDescription(string $description, string $type): array
     {
+        $exampleWasSpecified = false;
         $example = null;
+        $enumValues = [];
+
         if (preg_match('/(.*)\bExample:\s*([\s\S]+)\s*/s', $description, $content)) {
+            $exampleWasSpecified = true;
             $description = trim($content[1]);
 
-            // Examples are parsed as strings by default, we need to cast them properly
-            $example = $this->castToType($content[2], $type);
+            if ($content[2] == 'null') {
+                // If we intentionally put null as example we return null as example
+                $example = null;
+            } else {
+                // Examples are parsed as strings by default, we need to cast them properly
+                $example = $this->castToType($content[2], $type);
+            }
         }
 
-        return [$description, $example];
+        if (preg_match('/(.*)\bEnum:\s*([\s\S]+)\s*/s', $description, $content)) {
+            $description = trim($content[1]);
+
+            $enumValues = array_map(
+                fn ($value) => $this->castToType(trim($value), $type),
+                explode(',', rtrim(trim($content[2]), '.'))
+            );
+        }
+
+        return [$description, $example, $enumValues, $exampleWasSpecified];
     }
 }

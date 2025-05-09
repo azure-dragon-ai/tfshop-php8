@@ -9,14 +9,14 @@ use function sprintf;
 class MissingClassGroupsException extends Exception
 {
 
-	/** @param string[] $groups */
+	/** @param list<string> $groups */
 	public function __construct(array $groups)
 	{
 		parent::__construct(
 			sprintf(
 				'You need configure all class groups. These groups are missing from your configuration: %s.',
-				implode(', ', $groups)
-			)
+				implode(', ', $groups),
+			),
 		);
 	}
 

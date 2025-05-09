@@ -22,27 +22,25 @@ use const PATHINFO_EXTENSION;
 class FilepathNamespaceExtractor
 {
 
-	/** @var string[] */
-	private $rootNamespaces;
+	/** @var array<string, string> */
+	private array $rootNamespaces;
 
-	/** @var bool[] dir(string) => true(bool) */
-	private $skipDirs;
+	/** @var array<string, bool> dir(string) => true(bool) */
+	private array $skipDirs;
 
-	/** @var string[] */
-	private $extensions;
+	/** @var list<string> */
+	private array $extensions;
 
 	/**
-	 * @param string[] $rootNamespaces directory(string) => namespace
-	 * @param string[] $skipDirs
-	 * @param string[] $extensions index(integer) => extension
+	 * @param array<string, string> $rootNamespaces directory(string) => namespace
+	 * @param list<string> $skipDirs
+	 * @param list<string> $extensions index(integer) => extension
 	 */
 	public function __construct(array $rootNamespaces, array $skipDirs, array $extensions)
 	{
 		$this->rootNamespaces = $rootNamespaces;
 		$this->skipDirs = array_fill_keys($skipDirs, true);
-		$this->extensions = array_map(static function (string $extension): string {
-			return strtolower($extension);
-		}, $extensions);
+		$this->extensions = array_map(static fn (string $extension): string => strtolower($extension), $extensions);
 	}
 
 	public function getTypeNameFromProjectPath(string $path): ?string
@@ -52,7 +50,7 @@ class FilepathNamespaceExtractor
 			return null;
 		}
 
-		/** @var string[] $pathParts */
+		/** @var list<string> $pathParts */
 		$pathParts = preg_split('~[/\\\]~', $path);
 		$rootNamespace = null;
 		while (count($pathParts) > 0) {
@@ -78,9 +76,7 @@ class FilepathNamespaceExtractor
 
 		array_unshift($pathParts, $rootNamespace);
 
-		$typeName = implode('\\', array_filter($pathParts, function (string $pathPart): bool {
-			return !isset($this->skipDirs[$pathPart]);
-		}));
+		$typeName = implode('\\', array_filter($pathParts, fn (string $pathPart): bool => !isset($this->skipDirs[$pathPart])));
 
 		return substr($typeName, 0, -strlen('.' . $extension));
 	}

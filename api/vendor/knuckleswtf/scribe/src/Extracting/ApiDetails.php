@@ -2,9 +2,10 @@
 
 namespace Knuckles\Scribe\Extracting;
 
-use Illuminate\Support\Arr;
-use Knuckles\Scribe\Tools\ConsoleOutputUtils;
+use Knuckles\Scribe\Tools\ConsoleOutputUtils as c;
 use Knuckles\Scribe\Tools\DocumentationConfig;
+use Knuckles\Scribe\Tools\PathConfig;
+use Knuckles\Scribe\Tools\Utils as u;
 
 /**
  * Handles extracting other API details — intro, auth
@@ -23,11 +24,14 @@ class ApiDetails
 
     private array $lastKnownFileContentHashes = [];
 
-    public function __construct(DocumentationConfig $config = null, bool $preserveUserChanges = true, string $docsName = 'scribe')
-    {
-        $this->markdownOutputPath = ".{$docsName}"; //.scribe by default
+    public function __construct(
+        PathConfig          $paths,
+        ?DocumentationConfig $config = null,
+        bool                $preserveUserChanges = true
+    ) {
+        $this->markdownOutputPath = $paths->intermediateOutputPath(); //.scribe by default
         // If no config is injected, pull from global. Makes testing easier.
-        $this->config = $config ?: new DocumentationConfig(config($docsName));
+        $this->config = $config ?: new DocumentationConfig(config($paths->configName));
         $this->baseUrl = $this->config->get('base_url') ?? config('app.url');
         $this->preserveUserChanges = $preserveUserChanges;
 
@@ -37,7 +41,7 @@ class ApiDetails
 
     public function writeMarkdownFiles(): void
     {
-        ConsoleOutputUtils::info('Extracting intro and auth Markdown files to: ' . $this->markdownOutputPath);
+        c::info('Extracting intro and auth Markdown files to: ' . $this->markdownOutputPath);
 
         if (!is_dir($this->markdownOutputPath)) {
             mkdir($this->markdownOutputPath, 0777, true);
@@ -50,7 +54,7 @@ class ApiDetails
 
         $this->writeContentsTrackingFile();
 
-        ConsoleOutputUtils::success('Extracted intro and auth Markdown files to: ' . $this->markdownOutputPath);
+        c::success('Extracted intro and auth Markdown files to: ' . $this->markdownOutputPath);
     }
 
     public function writeIntroMarkdownFile(): void
@@ -58,11 +62,11 @@ class ApiDetails
         $introMarkdownFile = $this->markdownOutputPath . '/intro.md';
         if ($this->hasFileBeenModified($introMarkdownFile)) {
             if ($this->preserveUserChanges) {
-                ConsoleOutputUtils::warn("Skipping modified file $introMarkdownFile");
+                c::warn("Skipping modified file $introMarkdownFile");
                 return;
             }
 
-            ConsoleOutputUtils::warn("Discarding manual changes for file $introMarkdownFile because you specified --force");
+            c::warn("Discarding manual changes for file $introMarkdownFile because you specified --force");
         }
 
         $introMarkdown = view('scribe::markdown.intro')
@@ -77,11 +81,11 @@ class ApiDetails
         $authMarkdownFile = $this->markdownOutputPath . '/auth.md';
         if ($this->hasFileBeenModified($authMarkdownFile)) {
             if ($this->preserveUserChanges) {
-                ConsoleOutputUtils::warn("Skipping modified file $authMarkdownFile");
+                c::warn("Skipping modified file $authMarkdownFile");
                 return;
             }
 
-            ConsoleOutputUtils::warn("Discarding manual changes for file $authMarkdownFile because you specified --force");
+            c::warn("Discarding manual changes for file $authMarkdownFile because you specified --force");
         }
 
         $isAuthed = $this->config->get('auth.enabled', false);
@@ -91,32 +95,11 @@ class ApiDetails
         if ($isAuthed) {
             $strategy = $this->config->get('auth.in');
             $parameterName = $this->config->get('auth.name');
-            $authDescription = Arr::random([
-                "This API is authenticated by sending ",
-                "To authenticate requests, include ",
-                "Authenticate requests to this API's endpoints by sending ",
-            ]);
-            switch ($strategy) {
-                case 'query':
-                    $authDescription .= "a query parameter **`$parameterName`** in the request.";
-                    break;
-                case 'body':
-                    $authDescription .= "a parameter **`$parameterName`** in the body of the request.";
-                    break;
-                case 'query_or_body':
-                    $authDescription .= "a parameter **`$parameterName`** either in the query string or in the request body.";
-                    break;
-                case 'bearer':
-                    $authDescription .= sprintf('an **`Authorization`** header with the value **`"Bearer %s"`**.', $this->config->get('auth.placeholder') ?: 'your-token');;
-                    break;
-                case 'basic':
-                    $authDescription .= "an **`Authorization`** header in the form **`\"Basic {credentials}\"`**. The value of `{credentials}` should be your username/id and your password, joined with a colon (:), and then base64-encoded.";
-                    break;
-                case 'header':
-                    $authDescription .= sprintf('a **`%s`** header with the value **`"%s"`**.', $parameterName, $this->config->get('auth.placeholder') ?: 'your-token');
-                    break;
-            }
-            $authDescription .= "\n\nAll authenticated endpoints are marked with a `requires authentication` badge in the documentation below.";
+            $authDescription = u::trans("scribe::auth.instruction.$strategy", [
+                'parameterName' => $parameterName,
+                'placeholder' => $this->config->get('auth.placeholder') ?: 'your-token']
+            );
+            $authDescription .= "\n\n".u::trans("scribe::auth.details");
             $extraInfo = $this->config->get('auth.extra_info', '');
         }
 

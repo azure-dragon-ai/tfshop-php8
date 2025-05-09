@@ -4,19 +4,15 @@ namespace SlevomatCodingStandard\Sniffs\ControlStructures;
 
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
+use SlevomatCodingStandard\Helpers\FixerHelper;
+use SlevomatCodingStandard\Helpers\IndentationHelper;
 use SlevomatCodingStandard\Helpers\SniffSettingsHelper;
+use SlevomatCodingStandard\Helpers\TernaryOperatorHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use function array_merge;
 use function in_array;
 use function strlen;
 use function substr;
-use const T_CLOSE_PARENTHESIS;
-use const T_CLOSE_SHORT_ARRAY;
-use const T_CLOSE_SQUARE_BRACKET;
-use const T_CLOSE_TAG;
-use const T_COALESCE;
-use const T_COMMA;
-use const T_DOUBLE_ARROW;
 use const T_INLINE_ELSE;
 use const T_INLINE_THEN;
 use const T_OPEN_TAG;
@@ -29,11 +25,9 @@ class RequireMultiLineTernaryOperatorSniff implements Sniff
 
 	public const CODE_MULTI_LINE_TERNARY_OPERATOR_NOT_USED = 'MultiLineTernaryOperatorNotUsed';
 
-	private const TAB_INDENT = "\t";
-	private const SPACES_INDENT = '    ';
+	public int $lineLengthLimit = 0;
 
-	/** @var int */
-	public $lineLengthLimit = 0;
+	public ?int $minExpressionsLength = null;
 
 	/**
 	 * @return array<int, (int|string)>
@@ -47,11 +41,13 @@ class RequireMultiLineTernaryOperatorSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $inlineThenPointer
 	 */
 	public function process(File $phpcsFile, $inlineThenPointer): void
 	{
+		$this->lineLengthLimit = SniffSettingsHelper::normalizeInteger($this->lineLengthLimit);
+		$this->minExpressionsLength = SniffSettingsHelper::normalizeNullableInteger($this->minExpressionsLength);
+
 		$tokens = $phpcsFile->getTokens();
 
 		$nextPointer = TokenHelper::findNextEffective($phpcsFile, $inlineThenPointer + 1);
@@ -59,57 +55,40 @@ class RequireMultiLineTernaryOperatorSniff implements Sniff
 			return;
 		}
 
-		/** @var int $inlineElsePointer */
-		$inlineElsePointer = TokenHelper::findNext($phpcsFile, T_INLINE_ELSE, $inlineThenPointer + 1);
+		$inlineElsePointer = TernaryOperatorHelper::getElsePointer($phpcsFile, $inlineThenPointer);
 
 		if ($tokens[$inlineThenPointer]['line'] !== $tokens[$inlineElsePointer]['line']) {
 			return;
 		}
 
-		$pointerAfterInlineElseEnd = $inlineElsePointer + 1;
-		while (true) {
-			if (in_array(
-				$tokens[$pointerAfterInlineElseEnd]['code'],
-				[T_CLOSE_TAG, T_SEMICOLON, T_COMMA, T_DOUBLE_ARROW, T_CLOSE_SHORT_ARRAY, T_COALESCE],
-				true
-			)) {
-				break;
-			}
+		$inlineElseEndPointer = TernaryOperatorHelper::getEndPointer($phpcsFile, $inlineThenPointer, $inlineElsePointer);
+		$pointerAfterInlineElseEnd = TokenHelper::findNextEffective($phpcsFile, $inlineElseEndPointer + 1);
 
-			if (
-				$tokens[$pointerAfterInlineElseEnd]['code'] === T_CLOSE_PARENTHESIS
-				&& $tokens[$pointerAfterInlineElseEnd]['parenthesis_opener'] < $inlineElsePointer
-			) {
-				break;
-			}
-
-			if (
-				$tokens[$pointerAfterInlineElseEnd]['code'] === T_CLOSE_SQUARE_BRACKET
-				&& $tokens[$pointerAfterInlineElseEnd]['bracket_opener'] < $inlineElsePointer
-			) {
-				break;
-			}
-
-			$pointerAfterInlineElseEnd++;
-		}
-
-		if ($tokens[$pointerAfterInlineElseEnd]['code'] !== T_SEMICOLON) {
+		if ($pointerAfterInlineElseEnd === null || $tokens[$pointerAfterInlineElseEnd]['code'] !== T_SEMICOLON) {
 			return;
 		}
 
 		$endOfLineBeforeInlineThenPointer = $this->getEndOfLineBefore($phpcsFile, $inlineThenPointer);
 
-		$lineLengthLimit = SniffSettingsHelper::normalizeInteger($this->lineLengthLimit);
 		$actualLineLength = strlen(TokenHelper::getContent($phpcsFile, $endOfLineBeforeInlineThenPointer + 1, $pointerAfterInlineElseEnd));
 
-		if ($actualLineLength <= $lineLengthLimit) {
+		if ($actualLineLength <= $this->lineLengthLimit) {
+			return;
+		}
+
+		$expressionsLength = strlen(TokenHelper::getContent($phpcsFile, $inlineThenPointer + 1, $pointerAfterInlineElseEnd - 1));
+
+		if (
+			$this->minExpressionsLength !== null
+			&& $this->minExpressionsLength >= $expressionsLength
+		) {
 			return;
 		}
 
 		$fix = $phpcsFile->addFixableError(
 			'Ternary operator should be reformatted to more lines.',
 			$inlineThenPointer,
-			self::CODE_MULTI_LINE_TERNARY_OPERATOR_NOT_USED
+			self::CODE_MULTI_LINE_TERNARY_OPERATOR_NOT_USED,
 		);
 
 		if (!$fix) {
@@ -122,14 +101,12 @@ class RequireMultiLineTernaryOperatorSniff implements Sniff
 
 		$phpcsFile->fixer->beginChangeset();
 
-		for ($i = $pointerBeforeInlineThen + 1; $i < $inlineThenPointer; $i++) {
-			$phpcsFile->fixer->replaceToken($i, '');
-		}
+		FixerHelper::removeBetween($phpcsFile, $pointerBeforeInlineThen, $inlineThenPointer);
+
 		$phpcsFile->fixer->addContentBefore($inlineThenPointer, $phpcsFile->eolChar . $indentation);
 
-		for ($i = $pointerBeforeInlineElse + 1; $i < $inlineElsePointer; $i++) {
-			$phpcsFile->fixer->replaceToken($i, '');
-		}
+		FixerHelper::removeBetween($phpcsFile, $pointerBeforeInlineElse, $inlineElsePointer);
+
 		$phpcsFile->fixer->addContentBefore($inlineElsePointer, $phpcsFile->eolChar . $indentation);
 
 		$phpcsFile->fixer->endChangeset();
@@ -146,7 +123,7 @@ class RequireMultiLineTernaryOperatorSniff implements Sniff
 			$possibleEndOfLinePointer = TokenHelper::findPrevious(
 				$phpcsFile,
 				array_merge([T_WHITESPACE, T_OPEN_TAG, T_OPEN_TAG_WITH_ECHO], TokenHelper::$inlineCommentTokenCodes),
-				$startPointer
+				$startPointer,
 			);
 			if (
 				$tokens[$possibleEndOfLinePointer]['code'] === T_WHITESPACE
@@ -182,15 +159,18 @@ class RequireMultiLineTernaryOperatorSniff implements Sniff
 
 	private function getIndentation(File $phpcsFile, int $endOfLinePointer): string
 	{
-		$pointerAfterWhitespace = TokenHelper::findNextExcluding($phpcsFile, T_WHITESPACE, $endOfLinePointer + 1);
+		$pointerAfterWhitespace = TokenHelper::findNextNonWhitespace($phpcsFile, $endOfLinePointer + 1);
 		$actualIndentation = TokenHelper::getContent($phpcsFile, $endOfLinePointer + 1, $pointerAfterWhitespace - 1);
 
 		if (strlen($actualIndentation) !== 0) {
-			return $actualIndentation . (substr($actualIndentation, -1) === self::TAB_INDENT ? self::TAB_INDENT : self::SPACES_INDENT);
+			return $actualIndentation . (substr(
+				$actualIndentation,
+				-1,
+			) === IndentationHelper::TAB_INDENT ? IndentationHelper::TAB_INDENT : IndentationHelper::SPACES_INDENT);
 		}
 
-		$tabPointer = TokenHelper::findPreviousContent($phpcsFile, T_WHITESPACE, self::TAB_INDENT, $endOfLinePointer - 1);
-		return $tabPointer !== null ? self::TAB_INDENT : self::SPACES_INDENT;
+		$tabPointer = TokenHelper::findPreviousContent($phpcsFile, T_WHITESPACE, IndentationHelper::TAB_INDENT, $endOfLinePointer - 1);
+		return $tabPointer !== null ? IndentationHelper::TAB_INDENT : IndentationHelper::SPACES_INDENT;
 	}
 
 }

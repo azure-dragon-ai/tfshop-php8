@@ -55,7 +55,6 @@ class LanguageConstructWithParenthesesSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $languageConstructPointer
 	 */
 	public function process(File $phpcsFile, $languageConstructPointer): void
@@ -76,7 +75,7 @@ class LanguageConstructWithParenthesesSniff implements Sniff
 		$containsContentBetweenParentheses = TokenHelper::findNextEffective(
 			$phpcsFile,
 			$openParenthesisPointer + 1,
-			$closeParenthesisPointer
+			$closeParenthesisPointer,
 		) !== null;
 		if ($tokens[$languageConstructPointer]['code'] === T_EXIT && $containsContentBetweenParentheses) {
 			return;
@@ -85,7 +84,7 @@ class LanguageConstructWithParenthesesSniff implements Sniff
 		$fix = $phpcsFile->addFixableError(
 			sprintf('Usage of language construct "%s" with parentheses is disallowed.', $tokens[$languageConstructPointer]['content']),
 			$languageConstructPointer,
-			self::CODE_USED_WITH_PARENTHESES
+			self::CODE_USED_WITH_PARENTHESES,
 		);
 		if (!$fix) {
 			return;

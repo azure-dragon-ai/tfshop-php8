@@ -23,7 +23,6 @@ use const T_BOOL_CAST;
 use const T_BOOLEAN_AND;
 use const T_BOOLEAN_OR;
 use const T_CASE;
-use const T_CLOSE_CURLY_BRACKET;
 use const T_CLOSE_PARENTHESIS;
 use const T_CLOSE_SHORT_ARRAY;
 use const T_COALESCE;
@@ -36,6 +35,7 @@ use const T_DOC_COMMENT;
 use const T_DOUBLE_CAST;
 use const T_DOUBLE_COLON;
 use const T_FALSE;
+use const T_FN_ARROW;
 use const T_INLINE_ELSE;
 use const T_INLINE_THEN;
 use const T_INT_CAST;
@@ -43,6 +43,7 @@ use const T_LNUMBER;
 use const T_LOGICAL_AND;
 use const T_LOGICAL_OR;
 use const T_LOGICAL_XOR;
+use const T_MATCH_ARROW;
 use const T_MINUS;
 use const T_NS_SEPARATOR;
 use const T_NULL;
@@ -60,6 +61,9 @@ use const T_UNSET_CAST;
 use const T_VARIABLE;
 use const T_WHITESPACE;
 
+/**
+ * @internal
+ */
 class YodaHelper
 {
 
@@ -70,7 +74,6 @@ class YodaHelper
 	private const DYNAMISM_FUNCTION_CALL = 998;
 
 	/**
-	 * @param File $phpcsFile
 	 * @param array<int, array<string, array<int, int|string>|int|string>> $leftSideTokens
 	 * @param array<int, array<string, array<int, int|string>|int|string>> $rightSideTokens
 	 */
@@ -84,7 +87,6 @@ class YodaHelper
 
 	/**
 	 * @param array<int, array<string, array<int, int|string>|int|string>> $tokens
-	 * @param int $comparisonTokenPointer
 	 * @return array<int, array<string, array<int, int|string>|int|string>>
 	 */
 	public static function getLeftSideTokens(array $tokens, int $comparisonTokenPointer): array
@@ -131,7 +133,6 @@ class YodaHelper
 
 	/**
 	 * @param array<int, array<string, array<int, int|string>|int|string>> $tokens
-	 * @param int $comparisonTokenPointer
 	 * @return array<int, array<string, array<int, int|string>|int|string>>
 	 */
 	public static function getRightSideTokens(array $tokens, int $comparisonTokenPointer): array
@@ -179,17 +180,14 @@ class YodaHelper
 	/**
 	 * @param array<int, array<string, array<int, int|string>|int|string>> $tokens
 	 * @param array<int, array<string, array<int, int|string>|int|string>> $sideTokens
-	 * @return int|null
 	 */
 	public static function getDynamismForTokens(array $tokens, array $sideTokens): ?int
 	{
-		$sideTokens = array_values(array_filter($sideTokens, static function (array $token): bool {
-			return !in_array(
-				$token['code'],
-				[T_WHITESPACE, T_COMMENT, T_DOC_COMMENT, T_NS_SEPARATOR, T_PLUS, T_MINUS, T_INT_CAST, T_DOUBLE_CAST, T_STRING_CAST, T_ARRAY_CAST, T_OBJECT_CAST, T_BOOL_CAST, T_UNSET_CAST],
-				true
-			);
-		}));
+		$sideTokens = array_values(array_filter($sideTokens, static fn (array $token): bool => !in_array(
+			$token['code'],
+			[T_WHITESPACE, T_COMMENT, T_DOC_COMMENT, T_NS_SEPARATOR, T_PLUS, T_MINUS, T_INT_CAST, T_DOUBLE_CAST, T_STRING_CAST, T_ARRAY_CAST, T_OBJECT_CAST, T_BOOL_CAST, T_UNSET_CAST],
+			true,
+		)));
 
 		$sideTokensCount = count($sideTokens);
 
@@ -234,8 +232,8 @@ class YodaHelper
 		}
 
 		if (array_key_exists(0, $sideTokens)) {
-			/** @var int $sideTokenCode */
 			$sideTokenCode = $sideTokens[0]['code'];
+			/** @phpstan-ignore argument.type */
 			if (array_key_exists($sideTokenCode, $dynamism)) {
 				return $dynamism[$sideTokenCode];
 			}
@@ -270,7 +268,6 @@ class YodaHelper
 	}
 
 	/**
-	 * @param File $phpcsFile
 	 * @param array<int, array<string, array<int, int|string>|int|string>> $oldTokens
 	 * @param array<int, array<string, array<int, int|string>|int|string>> $newTokens
 	 */
@@ -283,13 +280,13 @@ class YodaHelper
 		/** @var int $lastOldPointer */
 		$lastOldPointer = key($oldTokens);
 
-		for ($i = $firstOldPointer; $i <= $lastOldPointer; $i++) {
-			$phpcsFile->fixer->replaceToken($i, '');
-		}
+		$content = implode('', array_map(static function (array $token): string {
+			/** @var string $content */
+			$content = $token['content'];
+			return $content;
+		}, $newTokens));
 
-		$phpcsFile->fixer->addContent($firstOldPointer, implode('', array_map(static function (array $token): string {
-			return $token['content'];
-		}, $newTokens)));
+		FixerHelper::change($phpcsFile, $firstOldPointer, $lastOldPointer, $content);
 	}
 
 	/**
@@ -343,10 +340,12 @@ class YodaHelper
 				T_COLON => true,
 				T_RETURN => true,
 				T_COMMA => true,
-				T_CLOSE_CURLY_BRACKET => true,
+				T_MATCH_ARROW => true,
+				T_FN_ARROW => true,
 			];
 
 			$stopTokenCodes += array_fill_keys(array_keys(Tokens::$assignmentTokens), true);
+			$stopTokenCodes += array_fill_keys(array_keys(Tokens::$commentTokens), true);
 		}
 
 		return $stopTokenCodes;

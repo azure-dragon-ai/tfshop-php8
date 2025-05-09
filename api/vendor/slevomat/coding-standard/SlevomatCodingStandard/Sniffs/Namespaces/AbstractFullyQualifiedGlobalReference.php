@@ -17,6 +17,7 @@ use function array_map;
 use function sprintf;
 use function strtolower;
 use const T_OPEN_TAG;
+use const T_OPEN_USE_GROUP;
 
 /**
  * @internal
@@ -26,17 +27,17 @@ abstract class AbstractFullyQualifiedGlobalReference implements Sniff
 
 	public const CODE_NON_FULLY_QUALIFIED = 'NonFullyQualified';
 
-	/** @var string[] */
-	public $exclude = [];
+	/** @var list<string> */
+	public array $exclude = [];
 
-	/** @var string[] */
-	public $include = [];
+	/** @var list<string> */
+	public array $include = [];
 
-	/** @var string[]|null */
-	private $normalizedExclude;
+	/** @var list<string>|null */
+	private ?array $normalizedExclude = null;
 
-	/** @var string[]|null */
-	private $normalizedInclude;
+	/** @var list<string>|null */
+	private ?array $normalizedInclude = null;
 
 	abstract protected function getNotFullyQualifiedMessage(): string;
 
@@ -45,7 +46,7 @@ abstract class AbstractFullyQualifiedGlobalReference implements Sniff
 	abstract protected function isValidType(ReferencedName $name): bool;
 
 	/**
-	 * @return (int|string)[]
+	 * @return array<int, (int|string)>
 	 */
 	public function register(): array
 	{
@@ -56,12 +57,15 @@ abstract class AbstractFullyQualifiedGlobalReference implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $openTagPointer
 	 */
 	public function process(File $phpcsFile, $openTagPointer): void
 	{
 		if (TokenHelper::findPrevious($phpcsFile, T_OPEN_TAG, $openTagPointer - 1) !== null) {
+			return;
+		}
+
+		if (TokenHelper::findNext($phpcsFile, T_OPEN_USE_GROUP, $openTagPointer) !== null) {
 			return;
 		}
 
@@ -114,7 +118,7 @@ abstract class AbstractFullyQualifiedGlobalReference implements Sniff
 			$fix = $phpcsFile->addFixableError(
 				sprintf($this->getNotFullyQualifiedMessage(), $tokens[$namePointer]['content']),
 				$namePointer,
-				self::CODE_NON_FULLY_QUALIFIED
+				self::CODE_NON_FULLY_QUALIFIED,
 			);
 			if (!$fix) {
 				continue;
@@ -127,7 +131,7 @@ abstract class AbstractFullyQualifiedGlobalReference implements Sniff
 	}
 
 	/**
-	 * @return string[]
+	 * @return list<string>
 	 */
 	protected function getNormalizedInclude(): array
 	{
@@ -138,7 +142,7 @@ abstract class AbstractFullyQualifiedGlobalReference implements Sniff
 	}
 
 	/**
-	 * @return string[]
+	 * @return list<string>
 	 */
 	private function getNormalizedExclude(): array
 	{
@@ -149,17 +153,15 @@ abstract class AbstractFullyQualifiedGlobalReference implements Sniff
 	}
 
 	/**
-	 * @param string[] $names
-	 * @return string[]
+	 * @param list<string> $names
+	 * @return list<string>
 	 */
 	private function normalizeNames(array $names): array
 	{
 		$names = SniffSettingsHelper::normalizeArray($names);
 
 		if (!$this->isCaseSensitive()) {
-			$names = array_map(static function (string $name): string {
-				return strtolower($name);
-			}, $names);
+			$names = array_map(static fn (string $name): string => strtolower($name), $names);
 		}
 
 		return $names;

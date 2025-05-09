@@ -11,12 +11,14 @@ use function preg_match;
 use function trim;
 use const PHP_VERSION_ID;
 
+/**
+ * @internal
+ */
 class SniffSettingsHelper
 {
 
 	/**
 	 * @param string|int $settings
-	 * @return int
 	 */
 	public static function normalizeInteger($settings): int
 	{
@@ -24,17 +26,21 @@ class SniffSettingsHelper
 	}
 
 	/**
-	 * @param string[] $settings
-	 * @return string[]
+	 * @param string|int|null $settings
+	 */
+	public static function normalizeNullableInteger($settings): ?int
+	{
+		return $settings !== null ? (int) trim((string) $settings) : null;
+	}
+
+	/**
+	 * @param list<string> $settings
+	 * @return list<string>
 	 */
 	public static function normalizeArray(array $settings): array
 	{
-		$settings = array_map(static function (string $value): string {
-			return trim($value);
-		}, $settings);
-		$settings = array_filter($settings, static function (string $value): bool {
-			return $value !== '';
-		});
+		$settings = array_map(static fn (string $value): string => trim($value), $settings);
+		$settings = array_filter($settings, static fn (string $value): bool => $value !== '');
 		return array_values($settings);
 	}
 

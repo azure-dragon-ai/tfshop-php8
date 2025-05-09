@@ -28,7 +28,6 @@ class DisallowLateStaticBindingForConstantsSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $staticPointer
 	 */
 	public function process(File $phpcsFile, $staticPointer): void
@@ -57,7 +56,7 @@ class DisallowLateStaticBindingForConstantsSniff implements Sniff
 		$fix = $phpcsFile->addFixableError(
 			'Late static binding for constants is disallowed.',
 			$staticPointer,
-			self::CODE_DISALLOWED_LATE_STATIC_BINDING_FOR_CONSTANT
+			self::CODE_DISALLOWED_LATE_STATIC_BINDING_FOR_CONSTANT,
 		);
 
 		if (!$fix) {

@@ -6,6 +6,7 @@ use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
 use PHP_CodeSniffer\Util\Tokens;
 use SlevomatCodingStandard\Helpers\ConditionHelper;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use function array_key_exists;
 use function in_array;
@@ -23,8 +24,7 @@ class UselessIfConditionWithReturnSniff implements Sniff
 
 	public const CODE_USELESS_IF_CONDITION = 'UselessIfCondition';
 
-	/** @var bool */
-	public $assumeAllConditionExpressionsAreAlreadyBoolean = false;
+	public bool $assumeAllConditionExpressionsAreAlreadyBoolean = false;
 
 	/**
 	 * @return array<int, (int|string)>
@@ -38,7 +38,6 @@ class UselessIfConditionWithReturnSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $ifPointer
 	 */
 	public function process(File $phpcsFile, $ifPointer): void
@@ -55,19 +54,17 @@ class UselessIfConditionWithReturnSniff implements Sniff
 			return;
 		}
 
-		$newCondition = static function () use ($phpcsFile, $tokens, $ifBooleanPointer, $ifPointer): string {
-			return strtolower($tokens[$ifBooleanPointer]['content']) === 'true'
+		$newCondition = static fn (): string => strtolower($tokens[$ifBooleanPointer]['content']) === 'true'
 				? TokenHelper::getContent(
 					$phpcsFile,
 					$tokens[$ifPointer]['parenthesis_opener'] + 1,
-					$tokens[$ifPointer]['parenthesis_closer'] - 1
+					$tokens[$ifPointer]['parenthesis_closer'] - 1,
 				)
 				: ConditionHelper::getNegativeCondition(
 					$phpcsFile,
 					$tokens[$ifPointer]['parenthesis_opener'] + 1,
-					$tokens[$ifPointer]['parenthesis_closer'] - 1
+					$tokens[$ifPointer]['parenthesis_closer'] - 1,
 				);
-		};
 
 		$elsePointer = TokenHelper::findNextEffective($phpcsFile, $tokens[$ifPointer]['scope_closer'] + 1);
 
@@ -103,14 +100,17 @@ class UselessIfConditionWithReturnSniff implements Sniff
 			}
 
 			$phpcsFile->fixer->beginChangeset();
-			$phpcsFile->fixer->replaceToken($ifPointer, sprintf('return %s;', $newCondition()));
-			for ($i = $ifPointer + 1; $i <= $tokens[$elsePointer]['scope_closer']; $i++) {
-				$phpcsFile->fixer->replaceToken($i, '');
-			}
+
+			FixerHelper::change($phpcsFile, $ifPointer, $tokens[$elsePointer]['scope_closer'], sprintf('return %s;', $newCondition()));
+
 			$phpcsFile->fixer->endChangeset();
 		} else {
-			/** @var int $returnPointer */
 			$returnPointer = TokenHelper::findNextEffective($phpcsFile, $tokens[$ifPointer]['scope_closer'] + 1);
+
+			if ($returnPointer === null) {
+				return;
+			}
+
 			if ($tokens[$returnPointer]['code'] !== T_RETURN) {
 				return;
 			}
@@ -132,10 +132,9 @@ class UselessIfConditionWithReturnSniff implements Sniff
 			}
 
 			$phpcsFile->fixer->beginChangeset();
-			$phpcsFile->fixer->replaceToken($ifPointer, sprintf('return %s;', $newCondition()));
-			for ($i = $ifPointer + 1; $i <= $semicolonPointer; $i++) {
-				$phpcsFile->fixer->replaceToken($i, '');
-			}
+
+			FixerHelper::change($phpcsFile, $ifPointer, $semicolonPointer, sprintf('return %s;', $newCondition()));
+
 			$phpcsFile->fixer->endChangeset();
 		}
 	}
@@ -155,7 +154,7 @@ class UselessIfConditionWithReturnSniff implements Sniff
 		return ConditionHelper::conditionReturnsBoolean(
 			$phpcsFile,
 			$tokens[$ifPointer]['parenthesis_opener'] + 1,
-			$tokens[$ifPointer]['parenthesis_closer'] - 1
+			$tokens[$ifPointer]['parenthesis_closer'] - 1,
 		);
 	}
 

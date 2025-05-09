@@ -9,7 +9,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
     <title>{!! $metadata['title'] !!}</title>
 
-    <link href="https://fonts.googleapis.com/css?family=PT+Sans&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans&display=swap" rel="stylesheet">
 
     <link rel="stylesheet" href="{!! $assetPathPrefix !!}css/theme-default.style.css" media="screen">
     <link rel="stylesheet" href="{!! $assetPathPrefix !!}css/theme-default.print.css" media="print">
@@ -17,8 +17,8 @@
     <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.10/lodash.min.js"></script>
 
     <link rel="stylesheet"
-          href="https://unpkg.com/@highlightjs/cdn-assets@10.7.2/styles/obsidian.min.css">
-    <script src="https://unpkg.com/@highlightjs/cdn-assets@10.7.2/highlight.min.js"></script>
+          href="https://unpkg.com/@highlightjs/cdn-assets@11.6.0/styles/obsidian.min.css">
+    <script src="https://unpkg.com/@highlightjs/cdn-assets@11.6.0/highlight.min.js"></script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jets/0.14.1/jets.min.js"></script>
 
@@ -33,9 +33,9 @@
 
 @if($tryItOut['enabled'] ?? true)
     <script>
-        var baseUrl = "{{ $tryItOut['base_url'] ?? config('app.url') }}";
-        var useCsrf = Boolean({{ $tryItOut['use_csrf'] ?? null }});
-        var csrfUrl = "{{ $tryItOut['csrf_url'] ?? null }}";
+        var tryItOutBaseUrl = "{!! $tryItOut['base_url'] ?? $baseUrl !!}";
+        var useCsrf = Boolean({!! $tryItOut['use_csrf'] ?? null !!});
+        var csrfUrl = "{!! $tryItOut['csrf_url'] ?? null !!}";
     </script>
     <script src="{{ u::getVersionedAsset($assetPathPrefix.'js/tryitout.js') }}"></script>
 @endif

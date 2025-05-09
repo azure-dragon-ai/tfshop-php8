@@ -34,7 +34,6 @@ class OptimizedFunctionsWithoutUnpackingSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $pointer
 	 */
 	public function process(File $phpcsFile, $pointer): void
@@ -93,17 +92,22 @@ class OptimizedFunctionsWithoutUnpackingSniff implements Sniff
 		$nextTokenAfterSeparatorPointer = TokenHelper::findNextEffective(
 			$phpcsFile,
 			$lastArgumentSeparatorPointer + 1,
-			$closeBracketPointer
+			$closeBracketPointer,
 		);
 
 		if ($tokens[$nextTokenAfterSeparatorPointer]['code'] !== T_ELLIPSIS) {
 			return;
 		}
 
+		if (TokenHelper::findNextEffective($phpcsFile, $nextTokenAfterSeparatorPointer + 1) === $closeBracketPointer) {
+			// First class callables
+			return;
+		}
+
 		$phpcsFile->addError(
 			sprintf('Function %s is specialized by PHP and should not use argument unpacking.', $invokedName),
 			$nextTokenAfterSeparatorPointer,
-			self::CODE_UNPACKING_USED
+			self::CODE_UNPACKING_USED,
 		);
 	}
 

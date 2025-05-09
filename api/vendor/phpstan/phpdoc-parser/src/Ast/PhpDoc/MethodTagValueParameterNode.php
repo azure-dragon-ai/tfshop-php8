@@ -4,25 +4,23 @@ namespace PHPStan\PhpDocParser\Ast\PhpDoc;
 
 use PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprNode;
 use PHPStan\PhpDocParser\Ast\Node;
+use PHPStan\PhpDocParser\Ast\NodeAttributes;
 use PHPStan\PhpDocParser\Ast\Type\TypeNode;
 
 class MethodTagValueParameterNode implements Node
 {
 
-	/** @var TypeNode|null */
-	public $type;
+	use NodeAttributes;
 
-	/** @var bool */
-	public $isReference;
+	public ?TypeNode $type = null;
 
-	/** @var bool */
-	public $isVariadic;
+	public bool $isReference;
 
-	/** @var string */
-	public $parameterName;
+	public bool $isVariadic;
 
-	/** @var ConstExprNode|null */
-	public $defaultValue;
+	public string $parameterName;
+
+	public ?ConstExprNode $defaultValue = null;
 
 	public function __construct(?TypeNode $type, bool $isReference, bool $isVariadic, string $parameterName, ?ConstExprNode $defaultValue)
 	{

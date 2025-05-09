@@ -5,20 +5,13 @@ namespace SlevomatCodingStandard\Sniffs\ControlStructures;
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
 use SlevomatCodingStandard\Helpers\ConditionHelper;
+use SlevomatCodingStandard\Helpers\FixerHelper;
+use SlevomatCodingStandard\Helpers\TernaryOperatorHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use function in_array;
-use const T_CASE;
-use const T_CLOSE_PARENTHESIS;
-use const T_CLOSE_SHORT_ARRAY;
-use const T_CLOSE_SQUARE_BRACKET;
-use const T_COMMA;
-use const T_DOUBLE_ARROW;
-use const T_EQUAL;
 use const T_FALSE;
 use const T_INLINE_ELSE;
 use const T_INLINE_THEN;
-use const T_OPEN_TAG;
-use const T_RETURN;
 use const T_TRUE;
 
 class UselessTernaryOperatorSniff implements Sniff
@@ -26,8 +19,7 @@ class UselessTernaryOperatorSniff implements Sniff
 
 	public const CODE_USELESS_TERNARY_OPERATOR = 'UselessTernaryOperator';
 
-	/** @var bool */
-	public $assumeAllConditionExpressionsAreAlreadyBoolean = false;
+	public bool $assumeAllConditionExpressionsAreAlreadyBoolean = false;
 
 	/**
 	 * @return array<int, (int|string)>
@@ -41,7 +33,6 @@ class UselessTernaryOperatorSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $inlineThenPointer
 	 */
 	public function process(File $phpcsFile, $inlineThenPointer): void
@@ -67,23 +58,7 @@ class UselessTernaryOperatorSniff implements Sniff
 			return;
 		}
 
-		/** @var int $pointerAfterInlineElseBranch */
-		$pointerAfterInlineElseBranch = TokenHelper::findNextEffective($phpcsFile, $pointerAfterInlineElse + 1);
-
-		if (in_array($tokens[$pointerAfterInlineElseBranch]['code'], [T_CLOSE_SHORT_ARRAY, T_CLOSE_SQUARE_BRACKET], true)) {
-			$pointerBeforeCondition = $tokens[$pointerAfterInlineElseBranch]['bracket_opener'];
-		} elseif ($tokens[$pointerAfterInlineElseBranch]['code'] === T_CLOSE_PARENTHESIS) {
-			$pointerBeforeCondition = $tokens[$pointerAfterInlineElseBranch]['parenthesis_opener'];
-		} else {
-			$pointerBeforeCondition = TokenHelper::findPrevious(
-				$phpcsFile,
-				[T_EQUAL, T_DOUBLE_ARROW, T_COMMA, T_RETURN, T_CASE, T_OPEN_TAG],
-				$inlineThenPointer - 1
-			);
-		}
-
-		/** @var int $conditionStartPointer */
-		$conditionStartPointer = TokenHelper::findNextEffective($phpcsFile, $pointerBeforeCondition + 1);
+		$conditionStartPointer = TernaryOperatorHelper::getStartPointer($phpcsFile, $inlineThenPointer);
 		/** @var int $conditionEndPointer */
 		$conditionEndPointer = TokenHelper::findPreviousEffective($phpcsFile, $inlineThenPointer - 1);
 
@@ -109,20 +84,19 @@ class UselessTernaryOperatorSniff implements Sniff
 			return;
 		}
 
-		$negativeCondition = ConditionHelper::getNegativeCondition($phpcsFile, $conditionStartPointer, $conditionEndPointer);
+		$inlineElseEndPointer = TernaryOperatorHelper::getEndPointer($phpcsFile, $inlineThenPointer, $inlineElsePointer);
+
+		$pointerAfterTernaryOperator = TokenHelper::findNextEffective($phpcsFile, $inlineElseEndPointer + 1);
 
 		$phpcsFile->fixer->beginChangeset();
 
 		if ($tokens[$pointerAfterInlineThen]['code'] === T_FALSE) {
-			$phpcsFile->fixer->replaceToken($conditionStartPointer, $negativeCondition);
-			for ($i = $conditionStartPointer + 1; $i <= $conditionEndPointer; $i++) {
-				$phpcsFile->fixer->replaceToken($i, '');
-			}
+			$negativeCondition = ConditionHelper::getNegativeCondition($phpcsFile, $conditionStartPointer, $conditionEndPointer);
+
+			FixerHelper::change($phpcsFile, $conditionStartPointer, $conditionEndPointer, $negativeCondition);
 		}
 
-		for ($i = $conditionEndPointer + 1; $i < $pointerAfterInlineElseBranch; $i++) {
-			$phpcsFile->fixer->replaceToken($i, '');
-		}
+		FixerHelper::removeBetween($phpcsFile, $conditionEndPointer, $pointerAfterTernaryOperator);
 
 		$phpcsFile->fixer->endChangeset();
 	}

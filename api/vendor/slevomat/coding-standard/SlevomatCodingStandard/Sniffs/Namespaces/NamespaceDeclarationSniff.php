@@ -4,6 +4,7 @@ namespace SlevomatCodingStandard\Sniffs\Namespaces;
 
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use function array_key_exists;
 use function sprintf;
@@ -32,7 +33,6 @@ class NamespaceDeclarationSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $namespacePointer
 	 */
 	public function process(File $phpcsFile, $namespacePointer): void
@@ -59,7 +59,7 @@ class NamespaceDeclarationSniff implements Sniff
 			$phpcsFile->addError(
 				'Expected one space after namespace statement.',
 				$namespacePointer,
-				self::CODE_INVALID_WHITESPACE_AFTER_NAMESPACE
+				self::CODE_INVALID_WHITESPACE_AFTER_NAMESPACE,
 			);
 			return;
 		}
@@ -93,7 +93,7 @@ class NamespaceDeclarationSniff implements Sniff
 		$namespaceNameEndPointer = TokenHelper::findNextExcluding(
 			$phpcsFile,
 			TokenHelper::getNameTokenCodes(),
-			$namespaceNameStartPointer + 1
+			$namespaceNameStartPointer + 1,
 		) - 1;
 
 		/** @var int $namespaceSemicolonPointer */
@@ -106,7 +106,7 @@ class NamespaceDeclarationSniff implements Sniff
 		$fix = $phpcsFile->addFixableError(
 			'Disallowed content between namespace name and semicolon.',
 			$namespacePointer,
-			self::CODE_DISALLOWED_CONTENT_BETWEEN_NAMESPACE_NAME_AND_SEMICOLON
+			self::CODE_DISALLOWED_CONTENT_BETWEEN_NAMESPACE_NAME_AND_SEMICOLON,
 		);
 
 		if (!$fix) {
@@ -114,9 +114,9 @@ class NamespaceDeclarationSniff implements Sniff
 		}
 
 		$phpcsFile->fixer->beginChangeset();
-		for ($i = $namespaceNameEndPointer + 1; $i < $namespaceSemicolonPointer; $i++) {
-			$phpcsFile->fixer->replaceToken($i, '');
-		}
+
+		FixerHelper::removeBetween($phpcsFile, $namespaceNameEndPointer, $namespaceSemicolonPointer);
+
 		$phpcsFile->fixer->endChangeset();
 	}
 
@@ -131,7 +131,7 @@ class NamespaceDeclarationSniff implements Sniff
 		$fix = $phpcsFile->addFixableError(
 			'Bracketed syntax for namespaces is disallowed.',
 			$namespacePointer,
-			self::CODE_DISALLOWED_BRACKETED_SYNTAX
+			self::CODE_DISALLOWED_BRACKETED_SYNTAX,
 		);
 
 		if (!$fix) {

@@ -17,13 +17,10 @@ final class SniffLocalCache
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.DisallowMixedTypeHint
 	 * @var array<int, array<string, mixed>>
 	 */
-	private static $cache = [];
+	private static array $cache = [];
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.DisallowMixedTypeHint
-	 * @param File $phpcsFile
-	 * @param string $key
-	 * @param Closure $lazyValue
 	 * @return mixed
 	 */
 	public static function getAndSetIfNotCached(File $phpcsFile, string $key, Closure $lazyValue)

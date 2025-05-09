@@ -6,6 +6,7 @@ use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
 use SlevomatCodingStandard\Helpers\ClassHelper;
 use SlevomatCodingStandard\Helpers\DocCommentHelper;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\FunctionHelper;
 use SlevomatCodingStandard\Helpers\IndentationHelper;
 use SlevomatCodingStandard\Helpers\SniffSettingsHelper;
@@ -13,20 +14,19 @@ use SlevomatCodingStandard\Helpers\TokenHelper;
 use function array_key_exists;
 use function sprintf;
 use function str_repeat;
+use const T_ATTRIBUTE;
+use const T_ATTRIBUTE_END;
 use const T_FUNCTION;
 use const T_SEMICOLON;
-use const T_WHITESPACE;
 
 class MethodSpacingSniff implements Sniff
 {
 
 	public const CODE_INCORRECT_LINES_COUNT_BETWEEN_METHODS = 'IncorrectLinesCountBetweenMethods';
 
-	/** @var int */
-	public $minLinesCount = 1;
+	public int $minLinesCount = 1;
 
-	/** @var int */
-	public $maxLinesCount = 1;
+	public int $maxLinesCount = 1;
 
 	/**
 	 * @return array<int, (int|string)>
@@ -38,11 +38,13 @@ class MethodSpacingSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $methodPointer
 	 */
 	public function process(File $phpcsFile, $methodPointer): void
 	{
+		$this->minLinesCount = SniffSettingsHelper::normalizeInteger($this->minLinesCount);
+		$this->maxLinesCount = SniffSettingsHelper::normalizeInteger($this->maxLinesCount);
+
 		if (!FunctionHelper::isMethod($phpcsFile, $methodPointer)) {
 			return;
 		}
@@ -60,34 +62,61 @@ class MethodSpacingSniff implements Sniff
 			return;
 		}
 
-		$nextMethodDocCommentStartPointer = DocCommentHelper::findDocCommentOpenToken($phpcsFile, $nextMethodPointer);
+		$nextMethodAttributeStartPointer = null;
+		$nextMethodDocCommentStartPointer = DocCommentHelper::findDocCommentOpenPointer($phpcsFile, $nextMethodPointer);
+
 		if (
 			$nextMethodDocCommentStartPointer !== null
 			&& $tokens[$tokens[$nextMethodDocCommentStartPointer]['comment_closer']]['line'] + 1 !== $tokens[$nextMethodPointer]['line']
 		) {
 			$nextMethodDocCommentStartPointer = null;
+		} else {
+			$nextMethodAttributeStartPointer = TokenHelper::findPrevious(
+				$phpcsFile,
+				T_ATTRIBUTE,
+				$nextMethodPointer - 1,
+				$methodEndPointer,
+			);
+
+			if ($nextMethodAttributeStartPointer !== null) {
+				do {
+					$pointerBefore = TokenHelper::findPreviousNonWhitespace(
+						$phpcsFile,
+						$nextMethodAttributeStartPointer - 1,
+						$methodEndPointer,
+					);
+
+					if ($tokens[$pointerBefore]['code'] === T_ATTRIBUTE_END) {
+						$nextMethodAttributeStartPointer = $tokens[$pointerBefore]['attribute_opener'];
+						continue;
+					}
+
+					break;
+				} while (true);
+			}
 		}
 
 		$nextMethodFirstLinePointer = $tokens[$nextMethodPointer]['line'] === $tokens[$methodEndPointer]['line']
 			? TokenHelper::findNextEffective($phpcsFile, $methodEndPointer + 1)
-			: TokenHelper::findFirstTokenOnLine($phpcsFile, $nextMethodDocCommentStartPointer ?? $nextMethodPointer);
+			: TokenHelper::findFirstTokenOnLine(
+				$phpcsFile,
+				$nextMethodDocCommentStartPointer ?? $nextMethodAttributeStartPointer ?? $nextMethodPointer,
+			);
 
-		if (TokenHelper::findNextExcluding($phpcsFile, T_WHITESPACE, $methodEndPointer + 1, $nextMethodFirstLinePointer) !== null) {
+		if (TokenHelper::findNextNonWhitespace($phpcsFile, $methodEndPointer + 1, $nextMethodFirstLinePointer) !== null) {
 			return;
 		}
 
 		$linesBetween = $tokens[$nextMethodFirstLinePointer]['line'] !== $tokens[$methodEndPointer]['line']
 			? $tokens[$nextMethodFirstLinePointer]['line'] - $tokens[$methodEndPointer]['line'] - 1
 			: null;
-		$minExpectedLines = SniffSettingsHelper::normalizeInteger($this->minLinesCount);
-		$maxExpectedLines = SniffSettingsHelper::normalizeInteger($this->maxLinesCount);
 
-		if ($linesBetween !== null && $linesBetween >= $minExpectedLines && $linesBetween <= $maxExpectedLines) {
+		if ($linesBetween !== null && $linesBetween >= $this->minLinesCount && $linesBetween <= $this->maxLinesCount) {
 			return;
 		}
 
-		if ($minExpectedLines === $maxExpectedLines) {
-			$errorMessage = $minExpectedLines === 1
+		if ($this->minLinesCount === $this->maxLinesCount) {
+			$errorMessage = $this->minLinesCount === 1
 				? 'Expected 1 blank line after method, found %3$d.'
 				: 'Expected %2$d blank lines after method, found %3$d.';
 		} else {
@@ -95,9 +124,9 @@ class MethodSpacingSniff implements Sniff
 		}
 
 		$fix = $phpcsFile->addFixableError(
-			sprintf($errorMessage, $minExpectedLines, $maxExpectedLines, $linesBetween ?? 0),
+			sprintf($errorMessage, $this->minLinesCount, $this->maxLinesCount, $linesBetween ?? 0),
 			$methodPointer,
-			self::CODE_INCORRECT_LINES_COUNT_BETWEEN_METHODS
+			self::CODE_INCORRECT_LINES_COUNT_BETWEEN_METHODS,
 		);
 
 		if (!$fix) {
@@ -109,24 +138,22 @@ class MethodSpacingSniff implements Sniff
 		if ($linesBetween === null) {
 			$phpcsFile->fixer->addContent(
 				$methodEndPointer,
-				$phpcsFile->eolChar . str_repeat($phpcsFile->eolChar, $minExpectedLines) . IndentationHelper::getIndentation(
+				$phpcsFile->eolChar . str_repeat($phpcsFile->eolChar, $this->minLinesCount) . IndentationHelper::getIndentation(
 					$phpcsFile,
-					TokenHelper::findFirstNonWhitespaceOnLine($phpcsFile, $methodPointer)
-				)
+					TokenHelper::findFirstNonWhitespaceOnLine($phpcsFile, $methodPointer),
+				),
 			);
 
-			for ($i = $methodEndPointer + 1; $i < $nextMethodFirstLinePointer; $i++) {
-				$phpcsFile->fixer->replaceToken($i, '');
-			}
+			FixerHelper::removeBetween($phpcsFile, $methodEndPointer, $nextMethodFirstLinePointer);
 
-		} elseif ($linesBetween > $maxExpectedLines) {
-			$phpcsFile->fixer->addContent($methodEndPointer, str_repeat($phpcsFile->eolChar, $maxExpectedLines + 1));
+		} elseif ($linesBetween > $this->maxLinesCount) {
+			$phpcsFile->fixer->addContent($methodEndPointer, str_repeat($phpcsFile->eolChar, $this->maxLinesCount + 1));
 
-			for ($i = $methodEndPointer + 1; $i < TokenHelper::findFirstTokenOnLine($phpcsFile, $nextMethodFirstLinePointer); $i++) {
-				$phpcsFile->fixer->replaceToken($i, '');
-			}
+			$firstPointerOnNextMethodLine = TokenHelper::findFirstTokenOnLine($phpcsFile, $nextMethodFirstLinePointer);
+
+			FixerHelper::removeBetween($phpcsFile, $methodEndPointer, $firstPointerOnNextMethodLine);
 		} else {
-			$phpcsFile->fixer->addContent($methodEndPointer, str_repeat($phpcsFile->eolChar, $minExpectedLines - $linesBetween));
+			$phpcsFile->fixer->addContent($methodEndPointer, str_repeat($phpcsFile->eolChar, $this->minLinesCount - $linesBetween));
 		}
 
 		$phpcsFile->fixer->endChangeset();

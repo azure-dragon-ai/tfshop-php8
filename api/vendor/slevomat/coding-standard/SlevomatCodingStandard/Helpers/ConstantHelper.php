@@ -7,12 +7,16 @@ use PHP_CodeSniffer\Files\File;
 use function array_filter;
 use function array_map;
 use function array_reverse;
+use function array_values;
 use function iterator_to_array;
 use function sprintf;
 use const T_CONST;
 use const T_NAMESPACE;
 use const T_STRING;
 
+/**
+ * @internal
+ */
 class ConstantHelper
 {
 
@@ -33,18 +37,15 @@ class ConstantHelper
 	}
 
 	/**
-	 * @param File $phpcsFile
-	 * @return string[]
+	 * @return list<string>
 	 */
 	public static function getAllNames(File $phpcsFile): array
 	{
 		$previousConstantPointer = 0;
 
 		return array_map(
-			static function (int $constantPointer) use ($phpcsFile): string {
-				return self::getName($phpcsFile, $constantPointer);
-			},
-			array_filter(
+			static fn (int $constantPointer): string => self::getName($phpcsFile, $constantPointer),
+			array_values(array_filter(
 				iterator_to_array(self::getAllConstantPointers($phpcsFile, $previousConstantPointer)),
 				static function (int $constantPointer) use ($phpcsFile): bool {
 					foreach (array_reverse($phpcsFile->getTokens()[$constantPointer]['conditions']) as $conditionTokenCode) {
@@ -52,14 +53,12 @@ class ConstantHelper
 					}
 
 					return true;
-				}
-			)
+				},
+			)),
 		);
 	}
 
 	/**
-	 * @param File $phpcsFile
-	 * @param int $previousConstantPointer
 	 * @return Generator<int>
 	 */
 	private static function getAllConstantPointers(File $phpcsFile, int &$previousConstantPointer): Generator

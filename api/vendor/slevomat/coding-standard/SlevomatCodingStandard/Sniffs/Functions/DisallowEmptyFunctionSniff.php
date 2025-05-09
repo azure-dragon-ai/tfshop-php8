@@ -4,6 +4,7 @@ namespace SlevomatCodingStandard\Sniffs\Functions;
 
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
+use PHP_CodeSniffer\Util\Tokens;
 use SlevomatCodingStandard\Helpers\FunctionHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use const T_FUNCTION;
@@ -24,7 +25,6 @@ class DisallowEmptyFunctionSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $functionPointer
 	 */
 	public function process(File $phpcsFile, $functionPointer): void
@@ -35,11 +35,24 @@ class DisallowEmptyFunctionSniff implements Sniff
 			return;
 		}
 
+		if (FunctionHelper::getName($phpcsFile, $functionPointer) === '__construct') {
+			$propertyPromotion = TokenHelper::findNext(
+				$phpcsFile,
+				Tokens::$scopeModifiers,
+				$tokens[$functionPointer]['parenthesis_opener'] + 1,
+				$tokens[$functionPointer]['parenthesis_closer'],
+			);
+
+			if ($propertyPromotion !== null) {
+				return;
+			}
+		}
+
 		$firstContent = TokenHelper::findNextExcluding(
 			$phpcsFile,
 			T_WHITESPACE,
 			$tokens[$functionPointer]['scope_opener'] + 1,
-			$tokens[$functionPointer]['scope_closer']
+			$tokens[$functionPointer]['scope_closer'],
 		);
 
 		if ($firstContent !== null) {
@@ -49,7 +62,7 @@ class DisallowEmptyFunctionSniff implements Sniff
 		$phpcsFile->addError(
 			'Empty function body must have at least a comment to explain why is empty.',
 			$functionPointer,
-			self::CODE_EMPTY_FUNCTION
+			self::CODE_EMPTY_FUNCTION,
 		);
 	}
 

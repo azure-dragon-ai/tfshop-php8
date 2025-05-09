@@ -6,20 +6,27 @@ use Illuminate\Contracts\Support\Arrayable;
 use Spatie\DataTransferObject\DataTransferObject;
 
 
-class BaseDTO extends DataTransferObject implements Arrayable
+class BaseDTO extends DataTransferObject implements Arrayable, \ArrayAccess
 {
     /**
-     * @param array|self $data
-     *
-     * @return static
+     * @var array $custom
+     * Added so end-users can dynamically add additional properties for their own use.
      */
-    public static function create($data): self
+    public array $custom = [];
+
+    public static function create(BaseDTO|array $data, BaseDTO|array $inheritFrom = []): static
     {
         if ($data instanceof static) {
             return $data;
         }
 
-        return new static($data);
+        $mergedData = $inheritFrom instanceof static ? $inheritFrom->toArray() : $inheritFrom;
+
+        foreach ($data as $property => $value) {
+            $mergedData[$property] = $value;
+        }
+
+        return new static($mergedData);
     }
 
     protected function parseArray(array $array): array
@@ -40,5 +47,30 @@ class BaseDTO extends DataTransferObject implements Arrayable
         }
 
         return $array;
+    }
+
+    public static function make(array|self $data): static
+    {
+        return $data instanceof static ? $data : new static($data);
+    }
+
+    public function offsetExists(mixed $offset): bool
+    {
+        return isset($this->$offset);
+    }
+
+    public function offsetGet(mixed $offset): mixed
+    {
+        return $this->$offset;
+    }
+
+    public function offsetSet(mixed $offset, mixed $value): void
+    {
+        $this->$offset = $value;
+    }
+
+    public function offsetUnset(mixed $offset): void
+    {
+        unset($this->$offset);
     }
 }

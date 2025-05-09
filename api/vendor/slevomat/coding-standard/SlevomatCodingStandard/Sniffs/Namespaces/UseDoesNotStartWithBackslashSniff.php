@@ -28,15 +28,11 @@ class UseDoesNotStartWithBackslashSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $usePointer
 	 */
 	public function process(File $phpcsFile, $usePointer): void
 	{
-		if (
-			UseStatementHelper::isAnonymousFunctionUse($phpcsFile, $usePointer)
-			|| UseStatementHelper::isTraitUse($phpcsFile, $usePointer)
-		) {
+		if (!UseStatementHelper::isImportUse($phpcsFile, $usePointer)) {
 			return;
 		}
 
@@ -63,7 +59,7 @@ class UseDoesNotStartWithBackslashSniff implements Sniff
 		$fix = $phpcsFile->addFixableError(
 			'Use statement cannot start with a backslash.',
 			$nextTokenPointer,
-			self::CODE_STARTS_WITH_BACKSLASH
+			self::CODE_STARTS_WITH_BACKSLASH,
 		);
 
 		if (!$fix) {

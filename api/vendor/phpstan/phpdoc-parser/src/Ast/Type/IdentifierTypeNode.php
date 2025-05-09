@@ -2,11 +2,14 @@
 
 namespace PHPStan\PhpDocParser\Ast\Type;
 
+use PHPStan\PhpDocParser\Ast\NodeAttributes;
+
 class IdentifierTypeNode implements TypeNode
 {
 
-	/** @var string */
-	public $name;
+	use NodeAttributes;
+
+	public string $name;
 
 	public function __construct(string $name)
 	{

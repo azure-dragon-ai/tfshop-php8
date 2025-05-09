@@ -3,7 +3,6 @@
 namespace SlevomatCodingStandard\Helpers;
 
 use PHP_CodeSniffer\Files\File;
-use function array_merge;
 use function array_reverse;
 use function sprintf;
 use const T_ANON_CLASS;
@@ -11,14 +10,19 @@ use const T_FINAL;
 use const T_STRING;
 use const T_USE;
 
+/**
+ * @internal
+ */
 class ClassHelper
 {
 
 	public static function getClassPointer(File $phpcsFile, int $pointer): ?int
 	{
+		$tokens = $phpcsFile->getTokens();
+
 		$classPointers = array_reverse(self::getAllClassPointers($phpcsFile));
 		foreach ($classPointers as $classPointer) {
-			if ($classPointer < $pointer && ScopeHelper::isInSameScope($phpcsFile, $classPointer, $pointer)) {
+			if ($tokens[$classPointer]['scope_opener'] < $pointer && $tokens[$classPointer]['scope_closer'] > $pointer) {
 				return $classPointer;
 			}
 		}
@@ -57,7 +61,6 @@ class ClassHelper
 	}
 
 	/**
-	 * @param File $phpcsFile
 	 * @return array<int, string>
 	 */
 	public static function getAllNames(File $phpcsFile): array
@@ -78,9 +81,7 @@ class ClassHelper
 	}
 
 	/**
-	 * @param File $phpcsFile
-	 * @param int $classPointer
-	 * @return int[]
+	 * @return list<int>
 	 */
 	public static function getTraitUsePointers(File $phpcsFile, int $classPointer): array
 	{
@@ -105,14 +106,11 @@ class ClassHelper
 	}
 
 	/**
-	 * @param File $phpcsFile
-	 * @return array<int>
+	 * @return list<int>
 	 */
 	private static function getAllClassPointers(File $phpcsFile): array
 	{
-		$lazyValue = static function () use ($phpcsFile): array {
-			return TokenHelper::findNextAll($phpcsFile, array_merge(TokenHelper::$typeKeywordTokenCodes, [T_ANON_CLASS]), 0);
-		};
+		$lazyValue = static fn (): array => TokenHelper::findNextAll($phpcsFile, TokenHelper::$typeWithAnonymousClassKeywordTokenCodes, 0);
 
 		return SniffLocalCache::getAndSetIfNotCached($phpcsFile, 'classPointers', $lazyValue);
 	}

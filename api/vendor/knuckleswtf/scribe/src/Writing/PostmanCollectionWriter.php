@@ -15,13 +15,13 @@ class PostmanCollectionWriter
      * Postman collection schema version
      * https://schema.getpostman.com/json/collection/v2.1.0/collection.json
      */
-    const VERSION = '2.1.0';
+    const SPEC_VERSION = '2.1.0';
 
     protected DocumentationConfig $config;
 
     protected string $baseUrl;
 
-    public function __construct(DocumentationConfig $config = null)
+    public function __construct(?DocumentationConfig $config = null)
     {
         $this->config = $config ?: new DocumentationConfig(config('scribe', []));
         $this->baseUrl = $this->config->get('base_url') ?: config('app.url');
@@ -48,15 +48,15 @@ class PostmanCollectionWriter
                 'name' => $this->config->get('title') ?: config('app.name'),
                 '_postman_id' => Uuid::uuid4()->toString(),
                 'description' => $this->config->get('description', ''),
-                'schema' => "https://schema.getpostman.com/json/collection/v" . self::VERSION . "/collection.json",
+                'schema' => "https://schema.getpostman.com/json/collection/v" . self::SPEC_VERSION . "/collection.json",
             ],
-            'item' => array_map(function (array $group) {
+            'item' => array_values(array_map(function (array $group) {
                 return [
                     'name' => $group['name'],
                     'description' => $group['description'],
-                    'item' => array_map(\Closure::fromCallable([$this, 'generateEndpointItem']), $group['endpoints']),
+                    'item' => $this->generateSubItem($group),
                 ];
-            }, $groupedEndpoints),
+            }, $groupedEndpoints)),
             'auth' => $this->generateAuthObject(),
         ];
 
@@ -71,32 +71,61 @@ class PostmanCollectionWriter
             ];
         }
 
-        switch ($this->config->get('auth.in')) {
-            case "basic":
-                return [
-                    'type' => 'basic',
-                ];
-            case "bearer":
-                return [
-                    'type' => 'bearer',
-                ];
-            default:
-                return [
-                    'type' => 'apikey',
-                    'apikey' => [
-                        [
-                            'key' => 'in',
-                            'value' => $this->config->get('auth.in'),
-                            'type' => 'string',
-                        ],
-                        [
-                            'key' => 'key',
-                            'value' => $this->config->get('auth.name'),
-                            'type' => 'string',
-                        ],
+        return match ($this->config->get('auth.in')) {
+            "basic" => [
+                'type' => 'basic',
+            ],
+            "bearer" => [
+                'type' => 'bearer',
+                'bearer' => [
+                    [
+                        'key'   => $this->config->get('auth.name'),
+                        'type'  => 'string',
                     ],
-                ];
+                ],
+            ],
+            default => [
+                'type' => 'apikey',
+                'apikey' => [
+                    [
+                        'key' => 'in',
+                        'value' => $this->config->get('auth.in'),
+                        'type' => 'string',
+                    ],
+                    [
+                        'key' => 'key',
+                        'value' => $this->config->get('auth.name'),
+                        'type' => 'string',
+                    ],
+                ],
+            ],
+        };
+    }
+
+    protected function generateSubItem(array $group): array
+    {
+        $seenSubgroups = [];
+        $items = [];
+        /** @var OutputEndpointData $endpoint */
+        foreach ($group['endpoints'] as $endpoint) {
+            if (!$endpoint->metadata->subgroup) {
+                $items[] = $this->generateEndpointItem($endpoint);
+            } else {
+                if (isset($seenSubgroups[$endpoint->metadata->subgroup])) {
+                    $subgroupIndex = $seenSubgroups[$endpoint->metadata->subgroup];
+                    $items[$subgroupIndex]['description'] = $items[$subgroupIndex]['description'] ?: $endpoint->metadata->subgroupDescription;
+                    $items[$subgroupIndex]['item'] = [...$items[$subgroupIndex]['item'], $this->generateEndpointItem($endpoint)];
+                } else {
+                    $items[] = [
+                        'name' => $endpoint->metadata->subgroup,
+                        'description' => $endpoint->metadata->subgroupDescription,
+                        'item' => [$this->generateEndpointItem($endpoint)],
+                    ];
+                    $seenSubgroups[$endpoint->metadata->subgroup] = count($items) - 1;
+                }
+            }
         }
+        return $items;
     }
 
     protected function generateEndpointItem(OutputEndpointData $endpoint): array
@@ -116,7 +145,7 @@ class PostmanCollectionWriter
         }
 
         $endpointItem = [
-            'name' => $endpoint->metadata->title !== '' ? $endpoint->metadata->title : $endpoint->uri,
+            'name' => $endpoint->metadata->title !== '' ? $endpoint->metadata->title : ($endpoint->httpMethods[0].' '.$endpoint->uri),
             'request' => [
                 'url' => $this->generateUrlObject($endpoint),
                 'method' => $method,
@@ -139,17 +168,11 @@ class PostmanCollectionWriter
     {
         $body = [];
         $contentType = $endpoint->headers['Content-Type'] ?? null;
-        switch ($contentType) {
-            case 'multipart/form-data':
-                $inputMode = 'formdata';
-                break;
-            case 'application/x-www-form-urlencoded':
-                $inputMode = 'urlencoded';
-                break;
-            case 'application/json':
-            default:
-                $inputMode = 'raw';
-        }
+        $inputMode = match ($contentType) {
+            'multipart/form-data' => 'formdata',
+            'application/x-www-form-urlencoded' => 'urlencoded',
+            default => 'raw',
+        };
         $body['mode'] = $inputMode;
         $body[$inputMode] = [];
 
@@ -199,7 +222,7 @@ class PostmanCollectionWriter
             if (!is_array($value)) {
                 $body[] = [
                     'key' => $index,
-                    'value' => $value,
+                    'value' => (string) $value,
                     'type' => 'text',
                     'description' => $paramsFullDetails[$index]->description ?? '',
                 ];
@@ -269,11 +292,21 @@ class PostmanCollectionWriter
                     // Going with the first to also support object query parameters
                     // See https://www.php.net/manual/en/function.parse-str.php
                     $query[] = [
-                        'key' => urlencode("{$name}[$index]"),
-                        'value' => urlencode($value),
+                        'key' => "{$name}[$index]",
+                        'value' => is_string($value) ? $value : strval($value),
                         'description' => strip_tags($parameterData->description),
                         // Default query params to disabled if they aren't required and have empty values
                         'disabled' => !$parameterData->required && empty($parameterData->example),
+                    ];
+                }
+                // If there are no values, add one entry so the parameter shows up in the Postman UI.
+                if (empty($values)) {
+                    $query[] = [
+                        'key' => "{$name}[]",
+                        'value' => '',
+                        'description' => strip_tags($parameterData->description),
+                        // Default query params to disabled if they aren't required and have empty values
+                        'disabled' => true,
                     ];
                 }
             } else {
@@ -332,7 +365,7 @@ class PostmanCollectionWriter
             foreach ($response->headers as $header => $value) {
                 $headers[] = [
                     'key' => $header,
-                    'value' => $value
+                    'value' => $value,
                 ];
             }
 

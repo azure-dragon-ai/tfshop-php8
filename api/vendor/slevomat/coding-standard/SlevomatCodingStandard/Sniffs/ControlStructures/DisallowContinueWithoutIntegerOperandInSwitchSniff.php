@@ -28,7 +28,6 @@ class DisallowContinueWithoutIntegerOperandInSwitchSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $continuePointer
 	 */
 	public function process(File $phpcsFile, $continuePointer): void
@@ -49,7 +48,7 @@ class DisallowContinueWithoutIntegerOperandInSwitchSniff implements Sniff
 		$fix = $phpcsFile->addFixableError(
 			'Usage of "continue" without integer operand in "switch" is disallowed, use "break" instead.',
 			$continuePointer,
-			self::CODE_DISALLOWED_CONTINUE_WITHOUT_INTEGER_OPERAND_IN_SWITCH
+			self::CODE_DISALLOWED_CONTINUE_WITHOUT_INTEGER_OPERAND_IN_SWITCH,
 		);
 
 		if (!$fix) {

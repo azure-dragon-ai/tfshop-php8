@@ -5,10 +5,12 @@ namespace SlevomatCodingStandard\Sniffs\Classes;
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
 use SlevomatCodingStandard\Helpers\ClassHelper;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use const T_ANON_CLASS;
 use const T_CLASS;
 use const T_COMMA;
+use const T_ENUM;
 use const T_OPEN_CURLY_BRACKET;
 use const T_SEMICOLON;
 use const T_TRAIT;
@@ -28,12 +30,12 @@ class TraitUseDeclarationSniff implements Sniff
 			T_CLASS,
 			T_ANON_CLASS,
 			T_TRAIT,
+			T_ENUM,
 		];
 	}
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $classPointer
 	 */
 	public function process(File $phpcsFile, $classPointer): void
@@ -59,7 +61,7 @@ class TraitUseDeclarationSniff implements Sniff
 			$phpcsFile->addError(
 				'Multiple traits per use statement are forbidden.',
 				$usePointer,
-				self::CODE_MULTIPLE_TRAITS_PER_DECLARATION
+				self::CODE_MULTIPLE_TRAITS_PER_DECLARATION,
 			);
 			return;
 		}
@@ -67,7 +69,7 @@ class TraitUseDeclarationSniff implements Sniff
 		$fix = $phpcsFile->addFixableError(
 			'Multiple traits per use statement are forbidden.',
 			$usePointer,
-			self::CODE_MULTIPLE_TRAITS_PER_DECLARATION
+			self::CODE_MULTIPLE_TRAITS_PER_DECLARATION,
 		);
 
 		if (!$fix) {
@@ -89,10 +91,8 @@ class TraitUseDeclarationSniff implements Sniff
 		$otherCommaPointers = TokenHelper::findNextAll($phpcsFile, T_COMMA, $usePointer + 1, $endPointer);
 		foreach ($otherCommaPointers as $otherCommaPointer) {
 			$pointerAfterComma = TokenHelper::findNextEffective($phpcsFile, $otherCommaPointer + 1);
-			$phpcsFile->fixer->replaceToken($otherCommaPointer, ';' . $phpcsFile->eolChar . $indentation . 'use ');
-			for ($i = $otherCommaPointer + 1; $i < $pointerAfterComma; $i++) {
-				$phpcsFile->fixer->replaceToken($i, '');
-			}
+
+			FixerHelper::change($phpcsFile, $otherCommaPointer, $pointerAfterComma - 1, ';' . $phpcsFile->eolChar . $indentation . 'use ');
 		}
 
 		$phpcsFile->fixer->endChangeset();

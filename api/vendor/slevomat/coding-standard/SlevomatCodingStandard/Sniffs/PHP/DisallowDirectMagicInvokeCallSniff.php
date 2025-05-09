@@ -4,6 +4,7 @@ namespace SlevomatCodingStandard\Sniffs\PHP;
 
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use function strtolower;
 use const T_OBJECT_OPERATOR;
@@ -27,7 +28,6 @@ class DisallowDirectMagicInvokeCallSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $stringPointer
 	 */
 	public function process(File $phpcsFile, $stringPointer): void
@@ -51,7 +51,7 @@ class DisallowDirectMagicInvokeCallSniff implements Sniff
 		$fix = $phpcsFile->addFixableError(
 			'Direct call of __invoke() is disallowed.',
 			$stringPointer,
-			self::CODE_DISALLOWED_DIRECT_MAGIC_INVOKE_CALL
+			self::CODE_DISALLOWED_DIRECT_MAGIC_INVOKE_CALL,
 		);
 		if (!$fix) {
 			return;
@@ -59,9 +59,7 @@ class DisallowDirectMagicInvokeCallSniff implements Sniff
 
 		$phpcsFile->fixer->beginChangeset();
 
-		for ($i = $objectOperator; $i < $parenthesisOpenerPointer; $i++) {
-			$phpcsFile->fixer->replaceToken($i, '');
-		}
+		FixerHelper::removeBetweenIncluding($phpcsFile, $objectOperator, $parenthesisOpenerPointer - 1);
 
 		$phpcsFile->fixer->endChangeset();
 	}

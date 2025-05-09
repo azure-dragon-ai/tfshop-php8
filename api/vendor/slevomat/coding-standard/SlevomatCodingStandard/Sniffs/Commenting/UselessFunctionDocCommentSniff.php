@@ -6,10 +6,10 @@ use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
 use SlevomatCodingStandard\Helpers\AnnotationHelper;
 use SlevomatCodingStandard\Helpers\DocCommentHelper;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\FunctionHelper;
 use SlevomatCodingStandard\Helpers\NamespaceHelper;
 use SlevomatCodingStandard\Helpers\SniffSettingsHelper;
-use SlevomatCodingStandard\Helpers\SuppressHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use function array_key_exists;
 use function array_map;
@@ -22,13 +22,11 @@ class UselessFunctionDocCommentSniff implements Sniff
 
 	public const CODE_USELESS_DOC_COMMENT = 'UselessDocComment';
 
-	private const NAME = 'SlevomatCodingStandard.Commenting.UselessFunctionDocComment';
+	/** @var list<string> */
+	public array $traversableTypeHints = [];
 
-	/** @var string[] */
-	public $traversableTypeHints = [];
-
-	/** @var array<int, string>|null */
-	private $normalizedTraversableTypeHints;
+	/** @var list<string>|null */
+	private ?array $normalizedTraversableTypeHints = null;
 
 	/**
 	 * @return array<int, (int|string)>
@@ -42,16 +40,11 @@ class UselessFunctionDocCommentSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $functionPointer
 	 */
 	public function process(File $phpcsFile, $functionPointer): void
 	{
 		if (!DocCommentHelper::hasDocComment($phpcsFile, $functionPointer)) {
-			return;
-		}
-
-		if (SuppressHelper::isSniffSuppressed($phpcsFile, $functionPointer, $this->getSniffName(self::CODE_USELESS_DOC_COMMENT))) {
 			return;
 		}
 
@@ -73,7 +66,7 @@ class UselessFunctionDocCommentSniff implements Sniff
 				$functionPointer,
 				$returnTypeHint,
 				$returnAnnotation,
-				$this->getTraversableTypeHints()
+				$this->getTraversableTypeHints(),
 			)
 		) {
 			return;
@@ -92,13 +85,13 @@ class UselessFunctionDocCommentSniff implements Sniff
 				$functionPointer,
 				$parameterTypeHints[$parameterName],
 				$parameterAnnotation,
-				$this->getTraversableTypeHints()
+				$this->getTraversableTypeHints(),
 			)) {
 				return;
 			}
 		}
 
-		foreach (AnnotationHelper::getAnnotations($phpcsFile, $functionPointer) as [$annotation]) {
+		foreach (AnnotationHelper::getAnnotations($phpcsFile, $functionPointer) as $annotation) {
 			if (!in_array($annotation->getName(), ['@param', '@return'], true)) {
 				return;
 			}
@@ -108,17 +101,17 @@ class UselessFunctionDocCommentSniff implements Sniff
 			sprintf(
 				'%s %s() does not need documentation comment.',
 				FunctionHelper::getTypeLabel($phpcsFile, $functionPointer),
-				FunctionHelper::getFullyQualifiedName($phpcsFile, $functionPointer)
+				FunctionHelper::getFullyQualifiedName($phpcsFile, $functionPointer),
 			),
 			$functionPointer,
-			self::CODE_USELESS_DOC_COMMENT
+			self::CODE_USELESS_DOC_COMMENT,
 		);
 		if (!$fix) {
 			return;
 		}
 
 		/** @var int $docCommentOpenPointer */
-		$docCommentOpenPointer = DocCommentHelper::findDocCommentOpenToken($phpcsFile, $functionPointer);
+		$docCommentOpenPointer = DocCommentHelper::findDocCommentOpenPointer($phpcsFile, $functionPointer);
 		$docCommentClosePointer = $phpcsFile->getTokens()[$docCommentOpenPointer]['comment_closer'];
 
 		$changeStart = $docCommentOpenPointer;
@@ -126,30 +119,24 @@ class UselessFunctionDocCommentSniff implements Sniff
 		$changeEnd = TokenHelper::findNextEffective($phpcsFile, $docCommentClosePointer + 1) - 1;
 
 		$phpcsFile->fixer->beginChangeset();
-		for ($i = $changeStart; $i <= $changeEnd; $i++) {
-			$phpcsFile->fixer->replaceToken($i, '');
-		}
+
+		FixerHelper::removeBetweenIncluding($phpcsFile, $changeStart, $changeEnd);
+
 		$phpcsFile->fixer->endChangeset();
 	}
 
-	private function getSniffName(string $sniffName): string
-	{
-		return sprintf('%s.%s', self::NAME, $sniffName);
-	}
-
 	/**
-	 * @return array<int, string>
+	 * @return list<string>
 	 */
 	private function getTraversableTypeHints(): array
 	{
 		if ($this->normalizedTraversableTypeHints === null) {
-			$this->normalizedTraversableTypeHints = array_map(static function (string $typeHint): string {
-				return NamespaceHelper::isFullyQualifiedName($typeHint) ? $typeHint : sprintf(
-					'%s%s',
-					NamespaceHelper::NAMESPACE_SEPARATOR,
-					$typeHint
-				);
-			}, SniffSettingsHelper::normalizeArray($this->traversableTypeHints));
+			$this->normalizedTraversableTypeHints = array_map(
+				static fn (string $typeHint): string => NamespaceHelper::isFullyQualifiedName($typeHint)
+						? $typeHint
+						: sprintf('%s%s', NamespaceHelper::NAMESPACE_SEPARATOR, $typeHint),
+				SniffSettingsHelper::normalizeArray($this->traversableTypeHints),
+			);
 		}
 		return $this->normalizedTraversableTypeHints;
 	}

@@ -8,21 +8,17 @@ namespace SlevomatCodingStandard\Helpers;
 class ReferencedName
 {
 
-	public const TYPE_DEFAULT = 'default';
+	public const TYPE_CLASS = 'class';
 	public const TYPE_FUNCTION = 'function';
 	public const TYPE_CONSTANT = 'constant';
 
-	/** @var string */
-	private $nameAsReferencedInFile;
+	private string $nameAsReferencedInFile;
 
-	/** @var int */
-	private $startPointer;
+	private int $startPointer;
 
-	/** @var int */
-	private $endPointer;
+	private int $endPointer;
 
-	/** @var string */
-	private $type;
+	private string $type;
 
 	public function __construct(string $nameAsReferencedInFile, int $startPointer, int $endPointer, string $type)
 	{
@@ -54,7 +50,7 @@ class ReferencedName
 
 	public function isClass(): bool
 	{
-		return $this->type === self::TYPE_DEFAULT;
+		return $this->type === self::TYPE_CLASS;
 	}
 
 	public function isConstant(): bool

@@ -5,6 +5,7 @@ namespace SlevomatCodingStandard\Sniffs\Commenting;
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
 use SlevomatCodingStandard\Helpers\DocCommentHelper;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use function rtrim;
 use const T_DOC_COMMENT_CLOSE_TAG;
@@ -30,7 +31,6 @@ abstract class AbstractRequireOneLineDocComment implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $docCommentStartPointer
 	 */
 	public function process(File $phpcsFile, $docCommentStartPointer): void
@@ -70,7 +70,7 @@ abstract class AbstractRequireOneLineDocComment implements Sniff
 				$phpcsFile,
 				[T_DOC_COMMENT_WHITESPACE],
 				$startingPointer + 1,
-				$docCommentEndPointer + 1
+				$docCommentEndPointer + 1,
 			);
 
 			if ($tokens[$currentLinePointer]['line'] === $tokens[$nextEffectivePointer]['line']) {
@@ -97,7 +97,7 @@ abstract class AbstractRequireOneLineDocComment implements Sniff
 				T_DOC_COMMENT_STAR,
 			],
 			$docCommentStartPointer + 1,
-			$docCommentEndPointer
+			$docCommentEndPointer,
 		);
 		$contentEndPointer = TokenHelper::findPreviousExcluding(
 			$phpcsFile,
@@ -106,14 +106,11 @@ abstract class AbstractRequireOneLineDocComment implements Sniff
 				T_DOC_COMMENT_STAR,
 			],
 			$docCommentEndPointer - 1,
-			$docCommentStartPointer
+			$docCommentStartPointer,
 		);
 
 		if ($contentStartPointer === null) {
-			for ($i = $docCommentStartPointer + 1; $i < $docCommentEndPointer; $i++) {
-				$phpcsFile->fixer->replaceToken($i, '');
-			}
-
+			FixerHelper::removeBetween($phpcsFile, $docCommentStartPointer, $docCommentEndPointer);
 			return;
 		}
 

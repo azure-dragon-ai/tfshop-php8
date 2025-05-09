@@ -26,7 +26,6 @@ class UselessParameterDefaultValueSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $functionPointer
 	 */
 	public function process(File $phpcsFile, $functionPointer): void
@@ -64,7 +63,7 @@ class UselessParameterDefaultValueSniff implements Sniff
 				$fix = $phpcsFile->addFixableError(
 					sprintf('Useless default value of parameter %s.', $parameter['name']),
 					$parameter['token'],
-					self::CODE_USELESS_PARAMETER_DEFAULT_VALUE
+					self::CODE_USELESS_PARAMETER_DEFAULT_VALUE,
 				);
 
 				if (!$fix) {

@@ -28,7 +28,6 @@ class RequireNowdocSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $heredocStartPointer
 	 */
 	public function process(File $phpcsFile, $heredocStartPointer): void
@@ -37,11 +36,14 @@ class RequireNowdocSniff implements Sniff
 
 		$heredocEndPointer = TokenHelper::findNext($phpcsFile, T_END_HEREDOC, $heredocStartPointer + 1);
 
-		$heredocContentPointers = TokenHelper::findNextAll($phpcsFile, T_HEREDOC, $heredocStartPointer + 1, $heredocEndPointer);
+		$heredocContentPointers = [];
+		for ($i = $heredocStartPointer + 1; $i < $heredocEndPointer; $i++) {
+			if ($tokens[$i]['code'] === T_HEREDOC) {
+				if (preg_match('~^([^\\\\$]|\\\\[^nrtvef0-7xu])*$~', $tokens[$i]['content']) === 0) {
+					return;
+				}
 
-		foreach ($heredocContentPointers as $heredocContentPointer) {
-			if (preg_match('~(?<!\\\\)\$~', $tokens[$heredocContentPointer]['content']) > 0) {
-				return;
+				$heredocContentPointers[] = $i;
 			}
 		}
 
@@ -60,7 +62,7 @@ class RequireNowdocSniff implements Sniff
 			$nowdocContent = preg_replace(
 				'~\\\\(\\\\[nrtvef]|\$|\\\\|\\\\[0-7]{1,3}|\\\\x[0-9A-Fa-f]{1,2}|\\\\u\{[0-9A-Fa-f]+\})~',
 				'$1',
-				$heredocContent
+				$heredocContent,
 			);
 
 			$phpcsFile->fixer->replaceToken($heredocContentPointer, $nowdocContent);

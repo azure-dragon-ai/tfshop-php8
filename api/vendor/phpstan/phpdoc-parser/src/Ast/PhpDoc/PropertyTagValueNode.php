@@ -2,19 +2,21 @@
 
 namespace PHPStan\PhpDocParser\Ast\PhpDoc;
 
+use PHPStan\PhpDocParser\Ast\NodeAttributes;
 use PHPStan\PhpDocParser\Ast\Type\TypeNode;
+use function trim;
 
 class PropertyTagValueNode implements PhpDocTagValueNode
 {
 
-	/** @var TypeNode */
-	public $type;
+	use NodeAttributes;
 
-	/** @var string */
-	public $propertyName;
+	public TypeNode $type;
+
+	public string $propertyName;
 
 	/** @var string (may be empty) */
-	public $description;
+	public string $description;
 
 	public function __construct(TypeNode $type, string $propertyName, string $description)
 	{

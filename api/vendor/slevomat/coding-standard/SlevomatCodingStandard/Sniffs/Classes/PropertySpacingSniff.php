@@ -3,7 +3,9 @@
 namespace SlevomatCodingStandard\Sniffs\Classes;
 
 use PHP_CodeSniffer\Files\File;
+use SlevomatCodingStandard\Helpers\PropertyHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
+use function in_array;
 use function sprintf;
 use const T_AS;
 use const T_CONST;
@@ -11,11 +13,13 @@ use const T_FUNCTION;
 use const T_PRIVATE;
 use const T_PROTECTED;
 use const T_PUBLIC;
+use const T_READONLY;
+use const T_STATIC;
 use const T_USE;
 use const T_VAR;
 use const T_VARIABLE;
 
-class PropertySpacingSniff extends AbstractPropertyAndConstantSpacing
+class PropertySpacingSniff extends AbstractPropertyConstantAndEnumCaseSpacing
 {
 
 	public const CODE_INCORRECT_COUNT_OF_BLANK_LINES_AFTER_PROPERTY = 'IncorrectCountOfBlankLinesAfterProperty';
@@ -25,12 +29,11 @@ class PropertySpacingSniff extends AbstractPropertyAndConstantSpacing
 	 */
 	public function register(): array
 	{
-		return [T_VAR, T_PUBLIC, T_PROTECTED, T_PRIVATE];
+		return [T_VAR, T_PUBLIC, T_PROTECTED, T_PRIVATE, T_READONLY, T_STATIC];
 	}
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $pointer
 	 */
 	public function process(File $phpcsFile, $pointer): int
@@ -42,8 +45,18 @@ class PropertySpacingSniff extends AbstractPropertyAndConstantSpacing
 			return $pointer;
 		}
 
+		$nextPointer = TokenHelper::findNextEffective($phpcsFile, $pointer + 1);
+		if (in_array($tokens[$nextPointer]['code'], [T_VAR, T_PUBLIC, T_PROTECTED, T_PRIVATE, T_READONLY, T_STATIC], true)) {
+			// We don't want to report the same property twice
+			return $nextPointer;
+		}
+
 		$propertyPointer = TokenHelper::findNext($phpcsFile, [T_VARIABLE, T_FUNCTION, T_CONST, T_USE], $pointer + 1);
-		if ($propertyPointer === null || $tokens[$propertyPointer]['code'] !== T_VARIABLE) {
+		if (
+			$propertyPointer === null
+			|| $tokens[$propertyPointer]['code'] !== T_VARIABLE
+			|| !PropertyHelper::isProperty($phpcsFile, $propertyPointer)
+		) {
 			return $propertyPointer ?? $pointer;
 		}
 
@@ -54,11 +67,7 @@ class PropertySpacingSniff extends AbstractPropertyAndConstantSpacing
 	{
 		$nextPointer = TokenHelper::findNext($phpcsFile, [T_FUNCTION, T_VARIABLE], $pointer + 1);
 
-		if ($nextPointer === null) {
-			return false;
-		}
-
-		return $phpcsFile->getTokens()[$nextPointer]['code'] === T_VARIABLE;
+		return $nextPointer !== null && $phpcsFile->getTokens()[$nextPointer]['code'] === T_VARIABLE;
 	}
 
 	protected function addError(File $phpcsFile, int $pointer, int $minExpectedLines, int $maxExpectedLines, int $found): bool

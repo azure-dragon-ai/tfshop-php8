@@ -4,16 +4,16 @@ namespace SlevomatCodingStandard\Sniffs\Classes;
 
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
+use PHP_CodeSniffer\Util\Tokens;
 use SlevomatCodingStandard\Helpers\ClassHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use function array_keys;
 use function count;
 use function in_array;
 use function sprintf;
-use const T_ANON_CLASS;
-use const T_CLASS;
 use const T_CONST;
-use const T_INTERFACE;
+use const T_EQUAL;
+use const T_FINAL;
 use const T_PRIVATE;
 use const T_PROTECTED;
 use const T_PUBLIC;
@@ -23,8 +23,7 @@ class ClassConstantVisibilitySniff implements Sniff
 
 	public const CODE_MISSING_CONSTANT_VISIBILITY = 'MissingConstantVisibility';
 
-	/** @var bool */
-	public $fixable = false;
+	public bool $fixable = false;
 
 	/**
 	 * @return array<int, (int|string)>
@@ -38,7 +37,6 @@ class ClassConstantVisibilitySniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $constantPointer
 	 */
 	public function process(File $phpcsFile, $constantPointer): void
@@ -51,19 +49,26 @@ class ClassConstantVisibilitySniff implements Sniff
 
 		/** @var int $classPointer */
 		$classPointer = array_keys($tokens[$constantPointer]['conditions'])[count($tokens[$constantPointer]['conditions']) - 1];
-		if (!in_array($tokens[$classPointer]['code'], [T_CLASS, T_INTERFACE, T_ANON_CLASS], true)) {
+		if (!in_array($tokens[$classPointer]['code'], Tokens::$ooScopeTokens, true)) {
 			return;
 		}
 
 		$visibilityPointer = TokenHelper::findPreviousEffective($phpcsFile, $constantPointer - 1);
+		if ($tokens[$visibilityPointer]['code'] === T_FINAL) {
+			$visibilityPointer = TokenHelper::findPreviousEffective($phpcsFile, $visibilityPointer - 1);
+		}
+
 		if (in_array($tokens[$visibilityPointer]['code'], [T_PUBLIC, T_PROTECTED, T_PRIVATE], true)) {
 			return;
 		}
 
+		$equalSignPointer = TokenHelper::findNext($phpcsFile, T_EQUAL, $constantPointer + 1);
+		$namePointer = TokenHelper::findPreviousEffective($phpcsFile, $equalSignPointer - 1);
+
 		$message = sprintf(
 			'Constant %s::%s visibility missing.',
 			ClassHelper::getFullyQualifiedName($phpcsFile, $classPointer),
-			$tokens[TokenHelper::findNextEffective($phpcsFile, $constantPointer + 1)]['content']
+			$tokens[$namePointer]['content'],
 		);
 
 		if ($this->fixable) {

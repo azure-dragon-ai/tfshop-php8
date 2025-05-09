@@ -15,8 +15,7 @@ class DisallowShortTernaryOperatorSniff implements Sniff
 
 	public const CODE_DISALLOWED_SHORT_TERNARY_OPERATOR = 'DisallowedShortTernaryOperator';
 
-	/** @var bool */
-	public $fixable = true;
+	public bool $fixable = true;
 
 	/**
 	 * @return array<int, (int|string)>
@@ -30,7 +29,6 @@ class DisallowShortTernaryOperatorSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $inlineThenPointer
 	 */
 	public function process(File $phpcsFile, $inlineThenPointer): void

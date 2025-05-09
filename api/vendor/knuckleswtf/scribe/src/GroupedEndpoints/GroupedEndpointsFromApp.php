@@ -3,11 +3,13 @@
 namespace Knuckles\Scribe\GroupedEndpoints;
 
 use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Knuckles\Camel\Camel;
 use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Camel\Output\OutputEndpointData;
 use Knuckles\Scribe\Commands\GenerateDocumentation;
+use Knuckles\Scribe\Exceptions\CouldntGetRouteDetails;
 use Knuckles\Scribe\Extracting\ApiDetails;
 use Knuckles\Scribe\Extracting\Extractor;
 use Knuckles\Scribe\Matching\MatchedRoute;
@@ -15,8 +17,9 @@ use Knuckles\Scribe\Matching\RouteMatcherInterface;
 use Knuckles\Scribe\Tools\ConsoleOutputUtils as c;
 use Knuckles\Scribe\Tools\DocumentationConfig;
 use Knuckles\Scribe\Tools\ErrorHandlingUtils as e;
-use Knuckles\Scribe\Tools\Utils as u;
+use Knuckles\Scribe\Tools\PathConfig;
 use Knuckles\Scribe\Tools\Utils;
+use Knuckles\Scribe\Tools\Utils as u;
 use Mpociot\Reflection\DocBlock;
 use Mpociot\Reflection\DocBlock\Tag;
 use ReflectionClass;
@@ -24,31 +27,22 @@ use Symfony\Component\Yaml\Yaml;
 
 class GroupedEndpointsFromApp implements GroupedEndpointsContract
 {
-    protected string $docsName;
-    private GenerateDocumentation $command;
-    private RouteMatcherInterface $routeMatcher;
     private DocumentationConfig $docConfig;
-    private bool $preserveUserChanges = true;
     private bool $encounteredErrors = false;
 
     public static string $camelDir;
     public static string $cacheDir;
 
-    private array $endpointGroupIndexes = [];
-
     public function __construct(
-        GenerateDocumentation $command, RouteMatcherInterface $routeMatcher,
-        bool $preserveUserChanges, string $docsName = 'scribe'
-    )
-    {
-        $this->command = $command;
-        $this->routeMatcher = $routeMatcher;
+        private GenerateDocumentation $command,
+        private RouteMatcherInterface $routeMatcher,
+        protected PathConfig $paths,
+        private bool $preserveUserChanges = true
+    ) {
         $this->docConfig = $command->getDocConfig();
-        $this->preserveUserChanges = $preserveUserChanges;
-        $this->docsName = $docsName;
 
-        static::$camelDir = Camel::camelDir($this->docsName);
-        static::$cacheDir = Camel::cacheDir($this->docsName);
+        static::$camelDir = Camel::camelDir($this->paths);
+        static::$cacheDir = Camel::cacheDir($this->paths);
     }
 
     public function get(): array
@@ -68,19 +62,28 @@ class GroupedEndpointsFromApp implements GroupedEndpointsContract
     {
         $latestEndpointsData = [];
         $cachedEndpoints = [];
-        $groups = [];
 
         if ($preserveUserChanges && is_dir(static::$camelDir) && is_dir(static::$cacheDir)) {
             $latestEndpointsData = Camel::loadEndpointsToFlatPrimitivesArray(static::$camelDir);
-            $cachedEndpoints = Camel::loadEndpointsToFlatPrimitivesArray(static::$cacheDir, true);
-            $groups = Camel::loadEndpointsIntoGroups(static::$camelDir);
+            $cachedEndpoints = Camel::loadEndpointsToFlatPrimitivesArray(static::$cacheDir);
         }
 
-        $routes = $routeMatcher->getRoutes($this->docConfig->get('routes'), $this->docConfig->get('router'));
-        $endpoints = $this->extractEndpointsInfoFromLaravelApp($routes, $cachedEndpoints, $latestEndpointsData, $groups);
-        $groupedEndpoints = Camel::groupEndpoints($endpoints, $this->endpointGroupIndexes);
+        $routes = $routeMatcher->getRoutes($this->docConfig->get('routes', []));
+        $endpoints = $this->extractEndpointsInfoFromLaravelApp($routes, $cachedEndpoints, $latestEndpointsData);
+
+        $groupedEndpoints = collect($endpoints)->groupBy('metadata.groupName')->map(function (Collection $endpointsInGroup) {
+            return [
+                'name' => $endpointsInGroup->first(function (ExtractedEndpointData $endpointData) {
+                        return !empty($endpointData->metadata->groupName);
+                    })->metadata->groupName ?? '',
+                'description' => $endpointsInGroup->first(function (ExtractedEndpointData $endpointData) {
+                        return !empty($endpointData->metadata->groupDescription);
+                    })->metadata->groupDescription ?? '',
+                'endpoints' => $endpointsInGroup->toArray(),
+            ];
+        })->all();
         $this->writeEndpointsToDisk($groupedEndpoints);
-        $groupedEndpoints = Camel::prepareGroupedEndpointsForOutput($groupedEndpoints);
+
         return $groupedEndpoints;
     }
 
@@ -88,14 +91,13 @@ class GroupedEndpointsFromApp implements GroupedEndpointsContract
      * @param MatchedRoute[] $matches
      * @param array $cachedEndpoints
      * @param array $latestEndpointsData
-     * @param array[] $groups
      *
      * @return array
      * @throws \Exception
      */
-    private function extractEndpointsInfoFromLaravelApp(array $matches, array $cachedEndpoints, array $latestEndpointsData, array $groups): array
+    private function extractEndpointsInfoFromLaravelApp(array $matches, array $cachedEndpoints, array $latestEndpointsData): array
     {
-        $generator = $this->makeExtractor();
+        $extractor = $this->makeExtractor();
 
         $parsedEndpoints = [];
 
@@ -120,15 +122,10 @@ class GroupedEndpointsFromApp implements GroupedEndpointsContract
 
             try {
                 c::info('Processing route: ' . c::getRouteRepresentation($route));
-                $currentEndpointData = $generator->processRoute($route, $routeItem->getRules());
+                $currentEndpointData = $extractor->processRoute($route, $routeItem->getRules());
                 // If latest data is different from cached data, merge latest into current
-                [$currentEndpointData, $index] = $this->mergeAnyEndpointDataUpdates($currentEndpointData, $cachedEndpoints, $latestEndpointsData, $groups);
-
-                // We need to preserve order of endpoints, in case user did custom sorting
+                $currentEndpointData = $this->mergeAnyEndpointDataUpdates($currentEndpointData, $cachedEndpoints, $latestEndpointsData);
                 $parsedEndpoints[] = $currentEndpointData;
-                if ($index !== null) {
-                    $this->endpointGroupIndexes[$currentEndpointData->endpointId()] = $index;
-                }
                 c::success('Processed route: ' . c::getRouteRepresentation($route));
             } catch (\Exception $exception) {
                 $this->encounteredErrors = true;
@@ -144,25 +141,24 @@ class GroupedEndpointsFromApp implements GroupedEndpointsContract
      * @param ExtractedEndpointData $endpointData
      * @param array[] $cachedEndpoints
      * @param array[] $latestEndpointsData
-     * @param array[] $groups
      *
-     * @return array The extracted endpoint data and the endpoint's index in the group file
+     * @return ExtractedEndpointData The extracted endpoint data
      */
-    private function mergeAnyEndpointDataUpdates(ExtractedEndpointData $endpointData, array $cachedEndpoints, array $latestEndpointsData, array $groups): array
+    private function mergeAnyEndpointDataUpdates(ExtractedEndpointData $endpointData, array $cachedEndpoints, array $latestEndpointsData): ExtractedEndpointData
     {
         // First, find the corresponding endpoint in cached and latest
         $thisEndpointCached = Arr::first($cachedEndpoints, function (array $endpoint) use ($endpointData) {
             return $endpoint['uri'] === $endpointData->uri && $endpoint['httpMethods'] === $endpointData->httpMethods;
         });
         if (!$thisEndpointCached) {
-            return [$endpointData, null];
+            return $endpointData;
         }
 
         $thisEndpointLatest = Arr::first($latestEndpointsData, function (array $endpoint) use ($endpointData) {
             return $endpoint['uri'] === $endpointData->uri && $endpoint['httpMethods'] == $endpointData->httpMethods;
         });
         if (!$thisEndpointLatest) {
-            return [$endpointData, null];
+            return $endpointData;
         }
 
         // Then compare cached and latest to see what sections changed.
@@ -188,15 +184,13 @@ class GroupedEndpointsFromApp implements GroupedEndpointsContract
         foreach ($changed as $property) {
             $endpointData->$property = $thisEndpointLatest->$property;
         }
-        $index = Camel::getEndpointIndexInGroup($groups, $thisEndpointLatest);
-
-        return [$endpointData, $index];
+        return $endpointData;
     }
 
     protected function writeEndpointsToDisk(array $grouped): void
     {
         Utils::deleteFilesMatching(static::$camelDir, function ($file) {
-            /** @var $file array|\League\Flysystem\StorageAttributes */
+            /** @var array|\League\Flysystem\StorageAttributes $file */
             return !Str::startsWith(basename($file['path']), 'custom.');
         });
         Utils::deleteDirectoryAndContents(static::$cacheDir);
@@ -215,24 +209,23 @@ class GroupedEndpointsFromApp implements GroupedEndpointsContract
                 $group, 20, 2,
                 Yaml::DUMP_EMPTY_ARRAY_AS_SEQUENCE | Yaml::DUMP_OBJECT_AS_MAP | Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK
             );
-            if (count(Camel::$groupFileNames) == count($grouped)
-                && isset(Camel::$groupFileNames[$group['name']])) {
-                $fileName = Camel::$groupFileNames[$group['name']];
-            } else {
-                // Format numbers as two digits so they are sorted properly when retrieving later
-                // (ie "10.yaml" comes after "9.yaml", not after "1.yaml")
-                $fileName = sprintf("%02d.yaml", $fileNameIndex);
-                $fileNameIndex++;
-            }
+
+            // Format numbers as two digits so they are sorted properly when retrieving later
+            // (ie "10.yaml" comes after "9.yaml", not after "1.yaml")
+            $fileName = sprintf("%02d.yaml", $fileNameIndex);
+            $fileNameIndex++;
 
             file_put_contents(static::$camelDir . "/$fileName", $yaml);
             file_put_contents(static::$cacheDir . "/$fileName", "## Autogenerated by Scribe. DO NOT MODIFY.\n\n" . $yaml);
         }
     }
 
-    private function isValidRoute(array $routeControllerAndMethod = null): bool
+    private function isValidRoute(?array $routeControllerAndMethod): bool
     {
         if (is_array($routeControllerAndMethod)) {
+            if (count($routeControllerAndMethod) < 2) {
+                throw CouldntGetRouteDetails::new();
+            }
             [$classOrObject, $method] = $routeControllerAndMethod;
             if (u::isInvokableObject($classOrObject)) {
                 return true;
@@ -245,6 +238,9 @@ class GroupedEndpointsFromApp implements GroupedEndpointsContract
 
     private function doesControllerMethodExist(array $routeControllerAndMethod): bool
     {
+        if (count($routeControllerAndMethod) < 2) {
+            throw CouldntGetRouteDetails::new();
+        }
         [$class, $method] = $routeControllerAndMethod;
         $reflection = new ReflectionClass($class);
 
@@ -287,7 +283,7 @@ class GroupedEndpointsFromApp implements GroupedEndpointsContract
 
     protected function makeApiDetails(): ApiDetails
     {
-        return new ApiDetails($this->docConfig, !$this->command->option('force'), $this->docsName);
+        return new ApiDetails($this->paths, $this->docConfig, !$this->command->option('force'));
     }
 
     /**

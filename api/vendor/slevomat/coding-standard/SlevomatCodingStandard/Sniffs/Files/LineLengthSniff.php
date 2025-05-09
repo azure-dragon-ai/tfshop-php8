@@ -22,24 +22,18 @@ class LineLengthSniff implements Sniff
 
 	/**
 	 * The limit that the length of a line must not exceed.
-	 *
-	 * @var int
 	 */
-	public $lineLengthLimit = 120;
+	public int $lineLengthLimit = 120;
 
 	/**
 	 * Whether or not to ignore comment lines.
-	 *
-	 * @var bool
 	 */
-	public $ignoreComments = false;
+	public bool $ignoreComments = false;
 
 	/**
 	 * Whether or not to ignore import lines (use).
-	 *
-	 * @var bool
 	 */
-	public $ignoreImports = true;
+	public bool $ignoreImports = true;
 
 	/**
 	 * @return array<int, (int|string)>
@@ -52,7 +46,6 @@ class LineLengthSniff implements Sniff
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
 	 * @phpcsSuppress SlevomatCodingStandard.Functions.UnusedParameter.UnusedParameter
-	 * @param File $phpcsFile
 	 * @param int $pointer
 	 */
 	public function process(File $phpcsFile, $pointer): int
@@ -123,9 +116,11 @@ class LineLengthSniff implements Sniff
 
 		if ($this->ignoreImports) {
 			$usePointer = UseStatementHelper::getUseStatementPointer($phpcsFile, $pointer - 1);
-			if (is_int($usePointer)
+			if (
+				is_int($usePointer)
 				&& $tokens[$usePointer]['line'] === $tokens[$pointer]['line']
-				&& !UseStatementHelper::isTraitUse($phpcsFile, $usePointer)) {
+				&& UseStatementHelper::isImportUse($phpcsFile, $usePointer)
+			) {
 				return;
 			}
 		}

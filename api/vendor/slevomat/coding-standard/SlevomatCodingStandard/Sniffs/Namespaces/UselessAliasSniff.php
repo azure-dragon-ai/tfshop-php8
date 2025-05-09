@@ -4,6 +4,7 @@ namespace SlevomatCodingStandard\Sniffs\Namespaces;
 
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\NamespaceHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use SlevomatCodingStandard\Helpers\UseStatementHelper;
@@ -29,9 +30,7 @@ class UselessAliasSniff implements Sniff
 	}
 
 	/**
-	 * @phpcsSuppress SlevomatCodingStandard.Functions.UnusedParameter.UnusedParameter
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $openTagPointer
 	 */
 	public function process(File $phpcsFile, $openTagPointer): void
@@ -60,7 +59,7 @@ class UselessAliasSniff implements Sniff
 				$fix = $phpcsFile->addFixableError(
 					sprintf('Useless alias "%s" for use of "%s".', $useStatement->getAlias(), $useStatement->getFullyQualifiedTypeName()),
 					$useStatement->getPointer(),
-					self::CODE_USELESS_ALIAS
+					self::CODE_USELESS_ALIAS,
 				);
 
 				if (!$fix) {
@@ -72,9 +71,9 @@ class UselessAliasSniff implements Sniff
 				$useSemicolonPointer = TokenHelper::findNext($phpcsFile, T_SEMICOLON, $asPointer + 1);
 
 				$phpcsFile->fixer->beginChangeset();
-				for ($i = $nameEndPointer + 1; $i < $useSemicolonPointer; $i++) {
-					$phpcsFile->fixer->replaceToken($i, '');
-				}
+
+				FixerHelper::removeBetween($phpcsFile, $nameEndPointer, $useSemicolonPointer);
+
 				$phpcsFile->fixer->endChangeset();
 			}
 		}

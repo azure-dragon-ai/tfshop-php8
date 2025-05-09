@@ -5,25 +5,21 @@ namespace SlevomatCodingStandard\Sniffs\ControlStructures;
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
 use PHP_CodeSniffer\Util\Tokens;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\IdentificatorHelper;
+use SlevomatCodingStandard\Helpers\TernaryOperatorHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use function in_array;
 use function sprintf;
 use function trim;
 use const T_BOOLEAN_NOT;
 use const T_CLOSE_PARENTHESIS;
-use const T_CLOSE_SHORT_ARRAY;
-use const T_CLOSE_SQUARE_BRACKET;
-use const T_COALESCE;
 use const T_COMMA;
-use const T_DOUBLE_ARROW;
-use const T_INLINE_ELSE;
 use const T_INLINE_THEN;
 use const T_IS_IDENTICAL;
 use const T_IS_NOT_IDENTICAL;
 use const T_ISSET;
 use const T_NULL;
-use const T_SEMICOLON;
 
 class RequireNullCoalesceOperatorSniff implements Sniff
 {
@@ -44,7 +40,6 @@ class RequireNullCoalesceOperatorSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $pointer
 	 */
 	public function process(File $phpcsFile, $pointer): void
@@ -85,7 +80,7 @@ class RequireNullCoalesceOperatorSniff implements Sniff
 			return;
 		}
 
-		$inlineElsePointer = TokenHelper::findNext($phpcsFile, T_INLINE_ELSE, $inlineThenPointer + 1);
+		$inlineElsePointer = TernaryOperatorHelper::getElsePointer($phpcsFile, $inlineThenPointer);
 
 		$variableContent = IdentificatorHelper::getContent($phpcsFile, $openParenthesisPointer + 1, $closeParenthesisPointer - 1);
 		$thenContent = IdentificatorHelper::getContent($phpcsFile, $inlineThenPointer + 1, $inlineElsePointer - 1);
@@ -97,7 +92,7 @@ class RequireNullCoalesceOperatorSniff implements Sniff
 		$fix = $phpcsFile->addFixableError(
 			'Use null coalesce operator instead of ternary operator.',
 			$inlineThenPointer,
-			self::CODE_NULL_COALESCE_OPERATOR_NOT_USED
+			self::CODE_NULL_COALESCE_OPERATOR_NOT_USED,
 		);
 		if (!$fix) {
 			return;
@@ -110,11 +105,7 @@ class RequireNullCoalesceOperatorSniff implements Sniff
 
 		$phpcsFile->fixer->beginChangeset();
 
-		$phpcsFile->fixer->replaceToken($startPointer, sprintf('%s ??', $variableContent));
-
-		for ($i = $startPointer + 1; $i <= $inlineElsePointer; $i++) {
-			$phpcsFile->fixer->replaceToken($i, '');
-		}
+		FixerHelper::change($phpcsFile, $startPointer, $inlineElsePointer, sprintf('%s ??', $variableContent));
 
 		$phpcsFile->fixer->endChangeset();
 	}
@@ -151,7 +142,7 @@ class RequireNullCoalesceOperatorSniff implements Sniff
 
 		$pointerBeforeCondition = TokenHelper::findPreviousEffective(
 			$phpcsFile,
-			($isYodaCondition ? $pointerBeforeIdenticalOperator : $variableStartPointer) - 1
+			($isYodaCondition ? $pointerBeforeIdenticalOperator : $variableStartPointer) - 1,
 		);
 
 		if (in_array($tokens[$pointerBeforeCondition]['code'], Tokens::$booleanOperators, true)) {
@@ -161,51 +152,28 @@ class RequireNullCoalesceOperatorSniff implements Sniff
 		/** @var int $inlineThenPointer */
 		$inlineThenPointer = TokenHelper::findNextEffective(
 			$phpcsFile,
-			($isYodaCondition ? $variableEndPointer : $pointerAfterIdenticalOperator) + 1
+			($isYodaCondition ? $variableEndPointer : $pointerAfterIdenticalOperator) + 1,
 		);
 		if ($tokens[$inlineThenPointer]['code'] !== T_INLINE_THEN) {
 			return;
 		}
 
-		$inlineElsePointer = TokenHelper::findNext($phpcsFile, T_INLINE_ELSE, $inlineThenPointer + 1);
-		$inlineElseEndPointer = $inlineElsePointer + 1;
-		while (true) {
-			if (in_array(
-				$tokens[$inlineElseEndPointer]['code'],
-				[T_SEMICOLON, T_COMMA, T_DOUBLE_ARROW, T_CLOSE_SHORT_ARRAY, T_COALESCE],
-				true
-			)) {
-				break;
-			}
+		$inlineElsePointer = TernaryOperatorHelper::getElsePointer($phpcsFile, $inlineThenPointer);
+		$inlineElseEndPointer = TernaryOperatorHelper::getEndPointer($phpcsFile, $inlineThenPointer, $inlineElsePointer);
 
-			if (
-				$tokens[$inlineElseEndPointer]['code'] === T_CLOSE_PARENTHESIS
-				&& $tokens[$inlineElseEndPointer]['parenthesis_opener'] < $inlineElsePointer
-			) {
-				break;
-			}
-
-			if (
-				$tokens[$inlineElseEndPointer]['code'] === T_CLOSE_SQUARE_BRACKET
-				&& $tokens[$inlineElseEndPointer]['bracket_opener'] < $inlineElsePointer
-			) {
-				break;
-			}
-
-			$inlineElseEndPointer++;
-		}
+		$pointerAfterInlineElseEnd = TokenHelper::findNextEffective($phpcsFile, $inlineElseEndPointer + 1);
 
 		$variableContent = IdentificatorHelper::getContent($phpcsFile, $variableStartPointer, $variableEndPointer);
 
 		/** @var int $compareToStartPointer */
 		$compareToStartPointer = TokenHelper::findNextEffective(
 			$phpcsFile,
-			($tokens[$identicalOperator]['code'] === T_IS_IDENTICAL ? $inlineElsePointer : $inlineThenPointer) + 1
+			($tokens[$identicalOperator]['code'] === T_IS_IDENTICAL ? $inlineElsePointer : $inlineThenPointer) + 1,
 		);
 		/** @var int $compareToEndPointer */
 		$compareToEndPointer = TokenHelper::findPreviousEffective(
 			$phpcsFile,
-			($tokens[$identicalOperator]['code'] === T_IS_IDENTICAL ? $inlineElseEndPointer : $inlineElsePointer) - 1
+			($tokens[$identicalOperator]['code'] === T_IS_IDENTICAL ? $pointerAfterInlineElseEnd : $inlineElsePointer) - 1,
 		);
 
 		$compareToContent = IdentificatorHelper::getContent($phpcsFile, $compareToStartPointer, $compareToEndPointer);
@@ -217,7 +185,7 @@ class RequireNullCoalesceOperatorSniff implements Sniff
 		$fix = $phpcsFile->addFixableError(
 			'Use null coalesce operator instead of ternary operator.',
 			$inlineThenPointer,
-			self::CODE_NULL_COALESCE_OPERATOR_NOT_USED
+			self::CODE_NULL_COALESCE_OPERATOR_NOT_USED,
 		);
 
 		if (!$fix) {
@@ -233,21 +201,14 @@ class RequireNullCoalesceOperatorSniff implements Sniff
 		$phpcsFile->fixer->replaceToken($conditionStart, sprintf('%s ??', $variableContent));
 
 		if ($tokens[$identicalOperator]['code'] === T_IS_IDENTICAL) {
-			for ($i = $conditionStart + 1; $i <= $inlineThenPointer; $i++) {
-				$phpcsFile->fixer->replaceToken($i, '');
-			}
+			FixerHelper::removeBetweenIncluding($phpcsFile, $conditionStart + 1, $inlineThenPointer);
 
 			$pointerBeforeInlineElse = TokenHelper::findPreviousEffective($phpcsFile, $inlineElsePointer - 1);
-			$pointerBeforeInlineElseEnd = TokenHelper::findPreviousEffective($phpcsFile, $inlineElseEndPointer - 1);
 
-			for ($i = $pointerBeforeInlineElse + 1; $i <= $pointerBeforeInlineElseEnd; $i++) {
-				$phpcsFile->fixer->replaceToken($i, '');
-			}
+			FixerHelper::removeBetweenIncluding($phpcsFile, $pointerBeforeInlineElse + 1, $inlineElseEndPointer);
 
 		} else {
-			for ($i = $conditionStart + 1; $i <= $inlineElsePointer; $i++) {
-				$phpcsFile->fixer->replaceToken($i, '');
-			}
+			FixerHelper::removeBetweenIncluding($phpcsFile, $conditionStart + 1, $inlineElsePointer);
 		}
 
 		$phpcsFile->fixer->endChangeset();

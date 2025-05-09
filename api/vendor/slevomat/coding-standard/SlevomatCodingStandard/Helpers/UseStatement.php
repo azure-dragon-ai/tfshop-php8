@@ -11,27 +11,21 @@ use function strtolower;
 class UseStatement
 {
 
-	public const TYPE_DEFAULT = ReferencedName::TYPE_DEFAULT;
+	public const TYPE_CLASS = ReferencedName::TYPE_CLASS;
 	public const TYPE_FUNCTION = ReferencedName::TYPE_FUNCTION;
 	public const TYPE_CONSTANT = ReferencedName::TYPE_CONSTANT;
 
-	/** @var string */
-	private $nameAsReferencedInFile;
+	private string $nameAsReferencedInFile;
 
-	/** @var string */
-	private $normalizedNameAsReferencedInFile;
+	private string $normalizedNameAsReferencedInFile;
 
-	/** @var string */
-	private $fullyQualifiedTypeName;
+	private string $fullyQualifiedTypeName;
 
-	/** @var int */
-	private $usePointer;
+	private int $usePointer;
 
-	/** @var string */
-	private $type;
+	private string $type;
 
-	/** @var string|null */
-	private $alias;
+	private ?string $alias = null;
 
 	public function __construct(
 		string $nameAsReferencedInFile,
@@ -79,6 +73,11 @@ class UseStatement
 		return $this->alias;
 	}
 
+	public function isClass(): bool
+	{
+		return $this->type === self::TYPE_CLASS;
+	}
+
 	public function isConstant(): bool
 	{
 		return $this->type === self::TYPE_CONSTANT;
@@ -98,7 +97,7 @@ class UseStatement
 	{
 		$normalizedName = self::normalizedNameAsReferencedInFile($type, $name);
 
-		if ($type === self::TYPE_DEFAULT) {
+		if ($type === self::TYPE_CLASS) {
 			return $normalizedName;
 		}
 

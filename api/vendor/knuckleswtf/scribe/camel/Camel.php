@@ -4,39 +4,23 @@
 namespace Knuckles\Camel;
 
 use Illuminate\Support\Arr;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
-use Knuckles\Camel\Extraction\ExtractedEndpointData;
 use Knuckles\Camel\Output\OutputEndpointData;
+use Knuckles\Scribe\Tools\PathConfig;
 use Knuckles\Scribe\Tools\Utils;
 use Symfony\Component\Yaml\Yaml;
 
 
 class Camel
 {
-    /**
-     * Mapping of group names to their generated file names. Helps us respect user reordering.
-     * @var array<string, string>
-     */
-    public static array $groupFileNames = [];
-
-    /**
-     * @deprecated Use the cacheDir() method instead
-     */
-    public static string $cacheDir = ".scribe/endpoints.cache";
-    /**
-     * @deprecated Use the camelDir() method instead
-     */
-    public static string $camelDir = ".scribe/endpoints";
-
-    public static function cacheDir(string $docsName = 'scribe')
+    public static function cacheDir(PathConfig $paths): string
     {
-        return ".$docsName/endpoints.cache";
+        return $paths->intermediateOutputPath('endpoints.cache');
     }
 
-    public static function camelDir(string $docsName = 'scribe')
+    public static function camelDir(PathConfig $paths): string
     {
-        return ".$docsName/endpoints";
+        return $paths->intermediateOutputPath('endpoints');
     }
 
     /**
@@ -44,55 +28,48 @@ class Camel
      *
      * @param string $folder
      *
-     * @return array[]
+     * @return array[] Each array is a group with keys including `name` and `endpoints`.
      */
     public static function loadEndpointsIntoGroups(string $folder): array
     {
         $groups = [];
-        self::loadEndpointsFromCamelFiles($folder, function ($group) use (&$groups) {
-            $group['endpoints'] = array_map(function (array $endpoint) {
-                return OutputEndpointData::fromExtractedEndpointArray($endpoint);
-            }, $group['endpoints']);
-            $groups[] = $group;
+        self::loadEndpointsFromCamelFiles($folder, function (array $group) use (&$groups) {
+            $groups[$group['name']] = $group;
         });
         return $groups;
     }
 
     /**
      * Load endpoints from the Camel files into a flat list of endpoint arrays.
+     * Useful when we don't care about groups, but simply want to compare endpoints contents
+     * to see if anything changed.
      *
      * @param string $folder
      *
-     * @return array[]
+     * @return array[] List of endpoint arrays.
      */
-    public static function loadEndpointsToFlatPrimitivesArray(string $folder, bool $isFromCache = false): array
+    public static function loadEndpointsToFlatPrimitivesArray(string $folder): array
     {
         $endpoints = [];
-        self::loadEndpointsFromCamelFiles($folder, function ($group) use (&$endpoints) {
+        self::loadEndpointsFromCamelFiles($folder, function (array $group) use (&$endpoints) {
             foreach ($group['endpoints'] as $endpoint) {
                 $endpoints[] = $endpoint;
             }
-        }, !$isFromCache);
+        });
         return $endpoints;
     }
 
-    public static function loadEndpointsFromCamelFiles(string $folder, callable $callback, bool $storeGroupFilePaths = true)
+    public static function loadEndpointsFromCamelFiles(string $folder, callable $callback): void
     {
         $contents = Utils::listDirectoryContents($folder);
 
         foreach ($contents as $object) {
-            // Flysystem v1 had items as arrays; v2 has objects.
-            // v2 allows ArrayAccess, but when we drop v1 support (Laravel <9), we should switch to methods
             if (
-                $object['type'] == 'file'
-                && Str::endsWith(basename($object['path']), '.yaml')
-                && !Str::startsWith(basename($object['path']), 'custom.')
+                $object->isFile()
+                && Str::endsWith(basename($object->path()), '.yaml')
+                && !Str::startsWith(basename($object->path()), 'custom.')
             ) {
                 $group = Yaml::parseFile($object['path']);
-                if ($storeGroupFilePaths) {
-                    $filePathParts = explode('/', $object['path']);
-                    self::$groupFileNames[$group['name']] = end($filePathParts);
-                }
                 $callback($group);
             }
         }
@@ -104,14 +81,12 @@ class Camel
 
         $userDefinedEndpoints = [];
         foreach ($contents as $object) {
-            // Flysystem v1 had items as arrays; v2 has objects.
-            // v2 allows ArrayAccess, but when we drop v1 support (Laravel <9), we should switch to methods
             if (
-                $object['type'] == 'file'
-                && Str::endsWith(basename($object['path']), '.yaml')
-                && Str::startsWith(basename($object['path']), 'custom.')
+                $object->isFile()
+                && Str::endsWith(basename($object->path()), '.yaml')
+                && Str::startsWith(basename($object->path()), 'custom.')
             ) {
-                $endpoints = Yaml::parseFile($object['path']);
+                $endpoints = Yaml::parseFile($object->path());
                 foreach (($endpoints ?: []) as $endpoint) {
                     $userDefinedEndpoints[] = $endpoint;
                 }
@@ -128,66 +103,134 @@ class Camel
         }));
     }
 
-    public static function getEndpointIndexInGroup(array $groups, OutputEndpointData $endpoint): ?int
-    {
-        foreach ($groups as $group) {
-            foreach ($group['endpoints'] as $index => $endpointInGroup) {
-                if ($endpointInGroup->endpointId() === $endpoint->endpointId()) {
-                    return $index;
-                }
-            }
-        }
-
-        return null;
-    }
-
     /**
-     * @param array[] $endpoints
-     * @param array $endpointGroupIndexes Mapping of endpoint IDs to their index within their group
+     * @param array[] $groupedEndpoints
+     * @param array $configFileOrder The order for groups that users specified in their config file.
      *
      * @return array[]
      */
-    public static function groupEndpoints(array $endpoints, array $endpointGroupIndexes): array
+    public static function sortByConfigFileOrder(array $groupedEndpoints, array $configFileOrder): array
     {
-        $groupedEndpoints = collect($endpoints)
-            ->groupBy('metadata.groupName')
-            ->sortKeys(SORT_NATURAL);
+        if (empty($configFileOrder)) {
+            ksort($groupedEndpoints, SORT_NATURAL);
+            return $groupedEndpoints;
+        }
 
-        return $groupedEndpoints->map(function (Collection $endpointsInGroup) use ($endpointGroupIndexes) {
-            /** @var Collection<(int|string),ExtractedEndpointData> $endpointsInGroup */
-            $sortedEndpoints = $endpointsInGroup;
-            if (!empty($endpointGroupIndexes)) {
-                $sortedEndpoints = $endpointsInGroup->sortBy(
-                    fn(ExtractedEndpointData $e) => $endpointGroupIndexes[$e->endpointId()] ?? INF,
+        // First, sort groups
+        $groupsOrder = Utils::getTopLevelItemsFromMixedConfigList($configFileOrder);
+        $groupsCollection = collect($groupedEndpoints);
+        $wildcardPosition = array_search('*', $groupsOrder);
+        if ($wildcardPosition !== false) {
+            $promotedGroups = array_splice($groupsOrder, 0, $wildcardPosition);
+            $demotedGroups = array_splice($groupsOrder, 1);
+
+            $promotedOrderedGroups = $groupsCollection->filter(fn ($group, $groupName) => in_array($groupName, $promotedGroups))
+                ->sortKeysUsing(self::getOrderListComparator($promotedGroups));
+            $demotedOrderedGroups = $groupsCollection->filter(fn ($group, $groupName) => in_array($groupName, $demotedGroups))
+                ->sortKeysUsing(self::getOrderListComparator($demotedGroups));
+
+            $nonWildcardGroups = array_merge($promotedGroups, $demotedGroups);
+            $wildCardOrderedGroups = $groupsCollection->filter(fn ($group, $groupName) => !in_array($groupName, $nonWildcardGroups))
+                ->sortKeysUsing(self::getOrderListComparator($demotedGroups));
+
+            $groupedEndpoints = $promotedOrderedGroups->merge($wildCardOrderedGroups)
+                ->merge($demotedOrderedGroups);
+        } else {
+            $groupedEndpoints = $groupsCollection->sortKeysUsing(self::getOrderListComparator($groupsOrder));
+        }
+
+        return $groupedEndpoints->map(function (array $group, string $groupName) use ($configFileOrder) {
+            $sortedEndpoints = collect($group['endpoints']);
+
+            if (isset($configFileOrder[$groupName])) {
+                // Second-level order list. Can contain endpoint or subgroup names
+                $level2Order = Utils::getTopLevelItemsFromMixedConfigList($configFileOrder[$groupName]);
+                $sortedEndpoints = $sortedEndpoints->sortBy(
+                    function (OutputEndpointData $e) use ($configFileOrder, $level2Order) {
+                        $endpointIdentifier = $e->httpMethods[0] . ' /' . $e->uri;
+
+                        // First, check if there's an ordering specified for the endpoint itself
+                        $indexOfEndpointInL2Order = array_search($endpointIdentifier, $level2Order);
+                        if ($indexOfEndpointInL2Order !== false) {
+                            return $indexOfEndpointInL2Order;
+                        }
+
+                        // Check if there's an ordering for the endpoint's subgroup
+                        $indexOfSubgroupInL2Order = array_search($e->metadata->subgroup, $level2Order);
+                        if ($indexOfSubgroupInL2Order !== false) {
+                            // There's a subgroup order; check if there's an endpoints order within that
+                            $orderOfEndpointsInSubgroup = $configFileOrder[$e->metadata->groupName][$e->metadata->subgroup] ?? [];
+                            $indexOfEndpointInSubGroup = array_search($endpointIdentifier, $orderOfEndpointsInSubgroup);
+                            return ($indexOfEndpointInSubGroup === false)
+                                ? $indexOfSubgroupInL2Order
+                                : ($indexOfSubgroupInL2Order + ($indexOfEndpointInSubGroup * 0.1));
+                        }
+
+                        return INF;
+                    },
                 );
             }
 
             return [
-                'name' => Arr::first($endpointsInGroup, function (ExtractedEndpointData $endpointData) {
-                        return !empty($endpointData->metadata->groupName);
-                    })->metadata->groupName ?? '',
-                'description' => Arr::first($endpointsInGroup, function (ExtractedEndpointData $endpointData) {
-                        return !empty($endpointData->metadata->groupDescription);
-                    })->metadata->groupDescription ?? '',
-                'endpoints' => $sortedEndpoints->map(
-                    fn(ExtractedEndpointData $endpointData) => $endpointData->forSerialisation()->toArray()
-                )->values()->all(),
+                'name' => $groupName,
+                'description' => $group['description'],
+                'endpoints' => $sortedEndpoints->all(),
             ];
         })->values()->all();
     }
 
-    public static function prepareGroupedEndpointsForOutput(array $groupedEndpoints): array
+    /**
+     * Prepare endpoints to be turned into HTML.
+     * Map them into OutputEndpointData DTOs, and sort them by the specified order in the config file.
+     *
+     * @param array<string,array[]> $groupedEndpoints
+     *
+     * @return array
+     */
+    public static function prepareGroupedEndpointsForOutput(array $groupedEndpoints, array $configFileOrder = []): array
     {
         $groups = array_map(function (array $group) {
             return [
                 'name' => $group['name'],
                 'description' => $group['description'],
-                'fileName' => self::$groupFileNames[$group['name']] ?? null,
-                'endpoints' => array_map(function (array $endpoint) {
-                    return OutputEndpointData::fromExtractedEndpointArray($endpoint);
-                }, $group['endpoints']),
+                'endpoints' => array_map(
+                    fn(array $endpoint) => OutputEndpointData::fromExtractedEndpointArray($endpoint), $group['endpoints']
+                ),
             ];
         }, $groupedEndpoints);
-        return array_values(Arr::sort($groups, 'fileName'));
+        return Camel::sortByConfigFileOrder($groups, $configFileOrder);
+    }
+
+    /**
+     * Given an $order list like ['first', 'second', ...], return a compare function that can be used to sort
+     * a list of strings based on the order of items in $order.
+     * Any strings not in the list are sorted with natural sort.
+     *
+     * @param array $order
+     */
+    protected static function getOrderListComparator(array $order): \Closure
+    {
+        return function ($a, $b) use ($order) {
+            $indexOfA = array_search($a, $order);
+            $indexOfB = array_search($b, $order);
+
+            // If both are in the $order list, compare them normally based on their position in the list
+            if ($indexOfA !== false && $indexOfB !== false) {
+                return $indexOfA <=> $indexOfB;
+            }
+
+            // If only A is in the $order list, then it must come before B.
+            if ($indexOfA !== false) {
+                return -1;
+            }
+
+            // If only B is in the $order list, then it must come before A.
+            if ($indexOfB !== false) {
+                return 1;
+            }
+
+            // If neither is present, fall back to natural sort
+            return strnatcmp($a, $b);
+        };
     }
 }

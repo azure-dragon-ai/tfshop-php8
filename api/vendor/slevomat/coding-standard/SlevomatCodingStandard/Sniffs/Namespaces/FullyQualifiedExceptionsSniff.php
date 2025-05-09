@@ -4,6 +4,7 @@ namespace SlevomatCodingStandard\Sniffs\Namespaces;
 
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\NamespaceHelper;
 use SlevomatCodingStandard\Helpers\ReferencedNameHelper;
 use SlevomatCodingStandard\Helpers\SniffSettingsHelper;
@@ -22,17 +23,17 @@ class FullyQualifiedExceptionsSniff implements Sniff
 
 	public const CODE_NON_FULLY_QUALIFIED_EXCEPTION = 'NonFullyQualifiedException';
 
-	/** @var string[] */
-	public $specialExceptionNames = [];
+	/** @var list<string> */
+	public array $specialExceptionNames = [];
 
-	/** @var string[] */
-	public $ignoredNames = [];
+	/** @var list<string> */
+	public array $ignoredNames = [];
 
-	/** @var string[]|null */
-	private $normalizedSpecialExceptionNames;
+	/** @var list<string>|null */
+	private ?array $normalizedSpecialExceptionNames = null;
 
-	/** @var string[]|null */
-	private $normalizedIgnoredNames;
+	/** @var list<string>|null */
+	private ?array $normalizedIgnoredNames = null;
 
 	/**
 	 * @return array<int, (int|string)>
@@ -46,7 +47,6 @@ class FullyQualifiedExceptionsSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $openTagPointer
 	 */
 	public function process(File $phpcsFile, $openTagPointer): void
@@ -75,7 +75,7 @@ class FullyQualifiedExceptionsSniff implements Sniff
 						!StringHelper::endsWith($useStatement->getFullyQualifiedTypeName(), 'Exception')
 						&& $useStatement->getFullyQualifiedTypeName() !== Throwable::class
 						&& (!StringHelper::endsWith($useStatement->getFullyQualifiedTypeName(), 'Error') || NamespaceHelper::hasNamespace(
-							$useStatement->getFullyQualifiedTypeName()
+							$useStatement->getFullyQualifiedTypeName(),
 						))
 						&& !in_array($useStatement->getFullyQualifiedTypeName(), $this->getSpecialExceptionNames(), true)
 					)
@@ -119,7 +119,7 @@ class FullyQualifiedExceptionsSniff implements Sniff
 
 			$fix = $phpcsFile->addFixableError(sprintf(
 				'Exception %s should be referenced via a fully qualified name.',
-				$name
+				$name,
 			), $pointer, self::CODE_NON_FULLY_QUALIFIED_EXCEPTION);
 			if (!$fix) {
 				continue;
@@ -129,17 +129,14 @@ class FullyQualifiedExceptionsSniff implements Sniff
 
 			$phpcsFile->fixer->beginChangeset();
 
-			for ($i = $referencedName->getStartPointer(); $i <= $referencedName->getEndPointer(); $i++) {
-				$phpcsFile->fixer->replaceToken($i, '');
-			}
-			$phpcsFile->fixer->addContent($referencedName->getStartPointer(), $fullyQualifiedName);
+			FixerHelper::change($phpcsFile, $referencedName->getStartPointer(), $referencedName->getEndPointer(), $fullyQualifiedName);
 
 			$phpcsFile->fixer->endChangeset();
 		}
 	}
 
 	/**
-	 * @return string[]
+	 * @return list<string>
 	 */
 	private function getSpecialExceptionNames(): array
 	{
@@ -151,7 +148,7 @@ class FullyQualifiedExceptionsSniff implements Sniff
 	}
 
 	/**
-	 * @return string[]
+	 * @return list<string>
 	 */
 	private function getIgnoredNames(): array
 	{

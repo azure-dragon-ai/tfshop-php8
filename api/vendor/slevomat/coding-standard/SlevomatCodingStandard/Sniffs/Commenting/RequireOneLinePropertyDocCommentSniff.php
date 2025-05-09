@@ -16,7 +16,6 @@ class RequireOneLinePropertyDocCommentSniff extends AbstractRequireOneLineDocCom
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $docCommentStartPointer
 	 */
 	public function process(File $phpcsFile, $docCommentStartPointer): void
@@ -32,7 +31,7 @@ class RequireOneLinePropertyDocCommentSniff extends AbstractRequireOneLineDocCom
 		}
 
 		// Check that doc comment belongs to the found property
-		$propertyDocCommentStartPointer = DocCommentHelper::findDocCommentOpenToken($phpcsFile, $propertyPointer);
+		$propertyDocCommentStartPointer = DocCommentHelper::findDocCommentOpenPointer($phpcsFile, $propertyPointer);
 		if ($propertyDocCommentStartPointer !== $docCommentStartPointer) {
 			return;
 		}
@@ -55,7 +54,7 @@ class RequireOneLinePropertyDocCommentSniff extends AbstractRequireOneLineDocCom
 		return $phpcsFile->addFixableError(
 			sprintf($error, PropertyHelper::getFullyQualifiedName($phpcsFile, $propertyPointer)),
 			$docCommentStartPointer,
-			self::CODE_MULTI_LINE_PROPERTY_COMMENT
+			self::CODE_MULTI_LINE_PROPERTY_COMMENT,
 		);
 	}
 

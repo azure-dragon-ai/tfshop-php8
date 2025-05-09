@@ -3,24 +3,24 @@
 namespace PHPStan\PhpDocParser\Ast\Type;
 
 use PHPStan\PhpDocParser\Ast\Node;
+use PHPStan\PhpDocParser\Ast\NodeAttributes;
+use function trim;
 
 class CallableTypeParameterNode implements Node
 {
 
-	/** @var TypeNode */
-	public $type;
+	use NodeAttributes;
 
-	/** @var bool */
-	public $isReference;
+	public TypeNode $type;
 
-	/** @var bool */
-	public $isVariadic;
+	public bool $isReference;
+
+	public bool $isVariadic;
 
 	/** @var string (may be empty) */
-	public $parameterName;
+	public string $parameterName;
 
-	/** @var bool */
-	public $isOptional;
+	public bool $isOptional;
 
 	public function __construct(TypeNode $type, bool $isReference, bool $isVariadic, string $parameterName, bool $isOptional)
 	{
@@ -37,8 +37,8 @@ class CallableTypeParameterNode implements Node
 		$type = "{$this->type} ";
 		$isReference = $this->isReference ? '&' : '';
 		$isVariadic = $this->isVariadic ? '...' : '';
-		$default = $this->isOptional ? ' = default' : '';
-		return "{$type}{$isReference}{$isVariadic}{$this->parameterName}{$default}";
+		$isOptional = $this->isOptional ? '=' : '';
+		return trim("{$type}{$isReference}{$isVariadic}{$this->parameterName}") . $isOptional;
 	}
 
 }

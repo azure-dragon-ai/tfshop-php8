@@ -12,9 +12,11 @@ use function count;
 use function in_array;
 use const T_CLOSE_PARENTHESIS;
 use const T_CLOSURE;
+use const T_COMMA;
 use const T_DOUBLE_COLON;
 use const T_EQUAL;
 use const T_FOREACH;
+use const T_GLOBAL;
 use const T_LIST;
 use const T_OBJECT_OPERATOR;
 use const T_OPEN_PARENTHESIS;
@@ -43,15 +45,14 @@ class DisallowImplicitArrayCreationSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $bracketOpenerPointer
 	 */
 	public function process(File $phpcsFile, $bracketOpenerPointer): void
 	{
 		$tokens = $phpcsFile->getTokens();
 
-		$assigmentPointer = TokenHelper::findNextEffective($phpcsFile, $tokens[$bracketOpenerPointer]['bracket_closer'] + 1);
-		if ($tokens[$assigmentPointer]['code'] !== T_EQUAL) {
+		$assignmentPointer = TokenHelper::findNextEffective($phpcsFile, $tokens[$bracketOpenerPointer]['bracket_closer'] + 1);
+		if ($tokens[$assignmentPointer]['code'] !== T_EQUAL) {
 			return;
 		}
 
@@ -132,7 +133,7 @@ class DisallowImplicitArrayCreationSniff implements Sniff
 			T_VARIABLE,
 			$variableName,
 			$tokens[$functionPointer]['parenthesis_opener'] + 1,
-			$tokens[$functionPointer]['parenthesis_closer']
+			$tokens[$functionPointer]['parenthesis_closer'],
 		);
 		return $parameterPointer !== null;
 	}
@@ -146,7 +147,7 @@ class DisallowImplicitArrayCreationSniff implements Sniff
 			$phpcsFile,
 			T_USE,
 			$tokens[$closurePointer]['parenthesis_closer'] + 1,
-			$tokens[$closurePointer]['scope_opener']
+			$tokens[$closurePointer]['scope_opener'],
 		);
 		if ($usePointer === null) {
 			return false;
@@ -159,7 +160,7 @@ class DisallowImplicitArrayCreationSniff implements Sniff
 			T_VARIABLE,
 			$variableName,
 			$parenthesisOpenerPointer + 1,
-			$tokens[$parenthesisOpenerPointer]['parenthesis_closer']
+			$tokens[$parenthesisOpenerPointer]['parenthesis_closer'],
 		);
 		return $inheritedVariablePointer !== null;
 	}
@@ -183,8 +184,8 @@ class DisallowImplicitArrayCreationSniff implements Sniff
 				continue;
 			}
 
-			$assigmentPointer = TokenHelper::findNextEffective($phpcsFile, $i + 1);
-			if ($tokens[$assigmentPointer]['code'] === T_EQUAL) {
+			$assignmentPointer = TokenHelper::findNextEffective($phpcsFile, $i + 1);
+			if ($tokens[$assignmentPointer]['code'] === T_EQUAL) {
 				return true;
 			}
 
@@ -204,6 +205,10 @@ class DisallowImplicitArrayCreationSniff implements Sniff
 			if ($this->isCreatedByReferencedParameterInFunctionCall($phpcsFile, $i, $scopeOpenerPointer)) {
 				return true;
 			}
+
+			if ($this->isImportedUsingGlobalStatement($phpcsFile, $i)) {
+				return true;
+			}
 		}
 
 		return false;
@@ -217,7 +222,7 @@ class DisallowImplicitArrayCreationSniff implements Sniff
 			$phpcsFile,
 			[T_OPEN_PARENTHESIS, T_OPEN_SHORT_ARRAY, T_OPEN_SQUARE_BRACKET],
 			$variablePointer - 1,
-			$scopeOpenerPointer
+			$scopeOpenerPointer,
 		);
 		if ($parenthesisOpenerPointer === null) {
 			return false;
@@ -261,6 +266,15 @@ class DisallowImplicitArrayCreationSniff implements Sniff
 
 		$pointerBeforeParenthesisOpener = TokenHelper::findPreviousEffective($phpcsFile, $parenthesisOpenerPointer - 1);
 		return $tokens[$pointerBeforeParenthesisOpener]['code'] === T_STRING;
+	}
+
+	private function isImportedUsingGlobalStatement(File $phpcsFile, int $variablePointer): bool
+	{
+		$tokens = $phpcsFile->getTokens();
+
+		$startOfStatement = $phpcsFile->findStartOfStatement($variablePointer, T_COMMA);
+
+		return $tokens[$startOfStatement]['code'] === T_GLOBAL;
 	}
 
 }

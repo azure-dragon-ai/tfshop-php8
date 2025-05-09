@@ -6,42 +6,35 @@ use PHP_CodeSniffer\Files\File;
 use SlevomatCodingStandard\Helpers\SniffSettingsHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use function array_key_exists;
-use const T_CASE;
 use const T_CLOSE_CURLY_BRACKET;
-use const T_DEFAULT;
 use const T_DO;
-use const T_FOR;
-use const T_FOREACH;
-use const T_IF;
-use const T_SWITCH;
-use const T_TRY;
 use const T_WHILE;
 
 class BlockControlStructureSpacingSniff extends AbstractControlStructureSpacing
 {
 
-	/** @var int */
-	public $linesCountBeforeControlStructure = 1;
+	public int $linesCountBefore = 1;
 
-	/** @var int */
-	public $linesCountBeforeFirstControlStructure = 0;
+	public int $linesCountBeforeFirst = 0;
 
-	/** @var int */
-	public $linesCountAfterControlStructure = 1;
+	public int $linesCountAfter = 1;
 
-	/** @var int */
-	public $linesCountAfterLastControlStructure = 0;
+	public int $linesCountAfterLast = 0;
 
-	/** @var string[] */
-	public $tokensToCheck = [];
+	/** @var list<string> */
+	public array $controlStructures = [];
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $controlStructurePointer
 	 */
 	public function process(File $phpcsFile, $controlStructurePointer): void
 	{
+		$this->linesCountBefore = SniffSettingsHelper::normalizeInteger($this->linesCountBefore);
+		$this->linesCountBeforeFirst = SniffSettingsHelper::normalizeInteger($this->linesCountBeforeFirst);
+		$this->linesCountAfter = SniffSettingsHelper::normalizeInteger($this->linesCountAfter);
+		$this->linesCountAfterLast = SniffSettingsHelper::normalizeInteger($this->linesCountAfterLast);
+
 		if ($this->isWhilePartOfDo($phpcsFile, $controlStructurePointer)) {
 			return;
 		}
@@ -50,62 +43,55 @@ class BlockControlStructureSpacingSniff extends AbstractControlStructureSpacing
 	}
 
 	/**
-	 * @return int[]
+	 * @return list<string>
 	 */
-	protected function getSupportedTokens(): array
+	protected function getSupportedKeywords(): array
 	{
 		return [
-			T_IF,
-			T_DO,
-			T_WHILE,
-			T_FOR,
-			T_FOREACH,
-			T_SWITCH,
-			T_TRY,
-			T_CASE,
-			T_DEFAULT,
+			self::KEYWORD_IF,
+			self::KEYWORD_DO,
+			self::KEYWORD_WHILE,
+			self::KEYWORD_FOR,
+			self::KEYWORD_FOREACH,
+			self::KEYWORD_SWITCH,
+			self::KEYWORD_TRY,
+			self::KEYWORD_CASE,
+			self::KEYWORD_DEFAULT,
 		];
 	}
 
 	/**
-	 * @return string[]
+	 * @return list<string>
 	 */
-	protected function getTokensToCheck(): array
+	protected function getKeywordsToCheck(): array
 	{
-		return $this->tokensToCheck;
+		return $this->controlStructures;
 	}
 
 	protected function getLinesCountBefore(): int
 	{
-		return SniffSettingsHelper::normalizeInteger($this->linesCountBeforeControlStructure);
+		return $this->linesCountBefore;
 	}
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.Functions.UnusedParameter.UnusedParameter
-	 * @param File $phpcsFile
-	 * @param int $controlStructurePointer
-	 * @return int
 	 */
 	protected function getLinesCountBeforeFirst(File $phpcsFile, int $controlStructurePointer): int
 	{
-		return SniffSettingsHelper::normalizeInteger($this->linesCountBeforeFirstControlStructure);
+		return $this->linesCountBeforeFirst;
 	}
 
 	protected function getLinesCountAfter(): int
 	{
-		return SniffSettingsHelper::normalizeInteger($this->linesCountAfterControlStructure);
+		return $this->linesCountAfter;
 	}
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.Functions.UnusedParameter.UnusedParameter
-	 * @param File $phpcsFile
-	 * @param int $controlStructurePointer
-	 * @param int $controlStructureEndPointer
-	 * @return int
 	 */
 	protected function getLinesCountAfterLast(File $phpcsFile, int $controlStructurePointer, int $controlStructureEndPointer): int
 	{
-		return SniffSettingsHelper::normalizeInteger($this->linesCountAfterLastControlStructure);
+		return $this->linesCountAfterLast;
 	}
 
 	private function isWhilePartOfDo(File $phpcsFile, int $controlStructurePointer): bool

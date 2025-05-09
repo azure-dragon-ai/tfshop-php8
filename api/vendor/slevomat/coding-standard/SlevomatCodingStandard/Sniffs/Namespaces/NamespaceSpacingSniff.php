@@ -4,6 +4,7 @@ namespace SlevomatCodingStandard\Sniffs\Namespaces;
 
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\SniffSettingsHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use function array_key_exists;
@@ -16,7 +17,6 @@ use function substr_count;
 use const T_NAMESPACE;
 use const T_OPEN_TAG;
 use const T_SEMICOLON;
-use const T_WHITESPACE;
 
 class NamespaceSpacingSniff implements Sniff
 {
@@ -24,11 +24,9 @@ class NamespaceSpacingSniff implements Sniff
 	public const CODE_INCORRECT_LINES_COUNT_BEFORE_NAMESPACE = 'IncorrectLinesCountBeforeNamespace';
 	public const CODE_INCORRECT_LINES_COUNT_AFTER_NAMESPACE = 'IncorrectLinesCountAfterNamespace';
 
-	/** @var int */
-	public $linesCountBeforeNamespace = 1;
+	public int $linesCountBeforeNamespace = 1;
 
-	/** @var int */
-	public $linesCountAfterNamespace = 1;
+	public int $linesCountAfterNamespace = 1;
 
 	/**
 	 * @return array<int, (int|string)>
@@ -42,11 +40,13 @@ class NamespaceSpacingSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $namespacePointer
 	 */
 	public function process(File $phpcsFile, $namespacePointer): void
 	{
+		$this->linesCountBeforeNamespace = SniffSettingsHelper::normalizeInteger($this->linesCountBeforeNamespace);
+		$this->linesCountAfterNamespace = SniffSettingsHelper::normalizeInteger($this->linesCountAfterNamespace);
+
 		$this->checkLinesBeforeNamespace($phpcsFile, $namespacePointer);
 		$this->checkLinesAfterNamespace($phpcsFile, $namespacePointer);
 	}
@@ -56,7 +56,7 @@ class NamespaceSpacingSniff implements Sniff
 		$tokens = $phpcsFile->getTokens();
 
 		/** @var int $pointerBeforeNamespace */
-		$pointerBeforeNamespace = TokenHelper::findPreviousExcluding($phpcsFile, T_WHITESPACE, $namespacePointer - 1);
+		$pointerBeforeNamespace = TokenHelper::findPreviousNonWhitespace($phpcsFile, $namespacePointer - 1);
 
 		$whitespaceBeforeNamespace = '';
 
@@ -72,21 +72,21 @@ class NamespaceSpacingSniff implements Sniff
 			$whitespaceBeforeNamespace .= TokenHelper::getContent($phpcsFile, $pointerBeforeNamespace + 1, $namespacePointer - 1);
 		}
 
-		$requiredLinesCountBeforeNamespace = SniffSettingsHelper::normalizeInteger($this->linesCountBeforeNamespace);
 		$actualLinesCountBeforeNamespace = substr_count($whitespaceBeforeNamespace, $phpcsFile->eolChar) - 1;
 
-		if ($actualLinesCountBeforeNamespace === $requiredLinesCountBeforeNamespace) {
+		if ($actualLinesCountBeforeNamespace === $this->linesCountBeforeNamespace) {
 			return;
 		}
 
 		$fix = $phpcsFile->addFixableError(
 			sprintf(
-				'Expected %d lines before namespace statement, found %d.',
-				$requiredLinesCountBeforeNamespace,
-				$actualLinesCountBeforeNamespace
+				'Expected %d line%s before namespace statement, found %d.',
+				$this->linesCountBeforeNamespace,
+				$this->linesCountBeforeNamespace === 1 ? '' : 's',
+				$actualLinesCountBeforeNamespace,
 			),
 			$namespacePointer,
-			self::CODE_INCORRECT_LINES_COUNT_BEFORE_NAMESPACE
+			self::CODE_INCORRECT_LINES_COUNT_BEFORE_NAMESPACE,
 		);
 
 		if (!$fix) {
@@ -100,14 +100,13 @@ class NamespaceSpacingSniff implements Sniff
 		} elseif ($isInlineCommentBefore) {
 			$phpcsFile->fixer->replaceToken(
 				$pointerBeforeNamespace,
-				rtrim($tokens[$pointerBeforeNamespace]['content'], $phpcsFile->eolChar)
+				rtrim($tokens[$pointerBeforeNamespace]['content'], $phpcsFile->eolChar),
 			);
 		}
 
-		for ($i = $pointerBeforeNamespace + 1; $i < $namespacePointer; $i++) {
-			$phpcsFile->fixer->replaceToken($i, '');
-		}
-		for ($i = 0; $i <= $requiredLinesCountBeforeNamespace; $i++) {
+		FixerHelper::removeBetween($phpcsFile, $pointerBeforeNamespace, $namespacePointer);
+
+		for ($i = 0; $i <= $this->linesCountBeforeNamespace; $i++) {
 			$phpcsFile->fixer->addNewline($pointerBeforeNamespace);
 		}
 		$phpcsFile->fixer->endChangeset();
@@ -122,28 +121,28 @@ class NamespaceSpacingSniff implements Sniff
 		/** @var int $namespaceSemicolonPointer */
 		$namespaceSemicolonPointer = TokenHelper::findNextLocal($phpcsFile, T_SEMICOLON, $namespacePointer + 1);
 
-		$pointerAfterWhitespaceEnd = TokenHelper::findNextExcluding($phpcsFile, T_WHITESPACE, $namespaceSemicolonPointer + 1);
+		$pointerAfterWhitespaceEnd = TokenHelper::findNextNonWhitespace($phpcsFile, $namespaceSemicolonPointer + 1);
 		if ($pointerAfterWhitespaceEnd === null) {
 			return;
 		}
 
 		$whitespaceAfterNamespace = TokenHelper::getContent($phpcsFile, $namespaceSemicolonPointer + 1, $pointerAfterWhitespaceEnd - 1);
 
-		$requiredLinesCountAfterNamespace = SniffSettingsHelper::normalizeInteger($this->linesCountAfterNamespace);
 		$actualLinesCountAfterNamespace = substr_count($whitespaceAfterNamespace, $phpcsFile->eolChar) - 1;
 
-		if ($actualLinesCountAfterNamespace === $requiredLinesCountAfterNamespace) {
+		if ($actualLinesCountAfterNamespace === $this->linesCountAfterNamespace) {
 			return;
 		}
 
 		$fix = $phpcsFile->addFixableError(
 			sprintf(
-				'Expected %d lines after namespace statement, found %d.',
-				$requiredLinesCountAfterNamespace,
-				$actualLinesCountAfterNamespace
+				'Expected %d line%s after namespace statement, found %d.',
+				$this->linesCountAfterNamespace,
+				$this->linesCountAfterNamespace === 1 ? '' : 's',
+				$actualLinesCountAfterNamespace,
 			),
 			$namespacePointer,
-			self::CODE_INCORRECT_LINES_COUNT_AFTER_NAMESPACE
+			self::CODE_INCORRECT_LINES_COUNT_AFTER_NAMESPACE,
 		);
 
 		if (!$fix) {
@@ -151,10 +150,10 @@ class NamespaceSpacingSniff implements Sniff
 		}
 
 		$phpcsFile->fixer->beginChangeset();
-		for ($i = $namespaceSemicolonPointer + 1; $i < $pointerAfterWhitespaceEnd; $i++) {
-			$phpcsFile->fixer->replaceToken($i, '');
-		}
-		for ($i = 0; $i <= $requiredLinesCountAfterNamespace; $i++) {
+
+		FixerHelper::removeBetween($phpcsFile, $namespaceSemicolonPointer, $pointerAfterWhitespaceEnd);
+
+		for ($i = 0; $i <= $this->linesCountAfterNamespace; $i++) {
 			$phpcsFile->fixer->addNewline($namespaceSemicolonPointer);
 		}
 		$phpcsFile->fixer->endChangeset();

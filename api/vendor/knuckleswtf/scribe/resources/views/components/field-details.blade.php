@@ -1,9 +1,13 @@
-<b><code>{{ $name }}</code></b>&nbsp;&nbsp;@if($type)<small>{{ $type }}</small>@endif @if(!$required)
-    <i>optional</i>@endif &nbsp;
-@if(($isInput ?? true) && empty($hasChildren))
+@php
+    $html ??= []; $class = $html['class'] ?? null;
+@endphp
+<b style="line-height: 2;"><code>{{ $name }}</code></b>&nbsp;&nbsp;
+@if($type)<small>{{ $type }}</small>@endif&nbsp;
+@if($isInput && !$required)<i>optional</i>@endif &nbsp;
+@if($isInput && empty($hasChildren))
     @php
         $isList = Str::endsWith($type, '[]');
-        $fullName =str_replace('[]', '.0', $name);
+        $fullName = str_replace('[]', '.0', $fullName ?? $name);
         $baseType = $isList ? substr($type, 0, -2) : $type;
         // Ignore the first '[]': the frontend will take care of it
         while (\Str::endsWith($baseType, '[]')) {
@@ -12,51 +16,60 @@
         }
         // When the body is an array, the item names will be ".0.thing"
         $fullName = ltrim($fullName, '.');
-        switch($baseType) {
-            case 'number':
-            case 'integer':
-                $inputType = 'number';
-                break;
-            case 'file':
-                $inputType = 'file';
-                break;
-            default:
-                $inputType = 'text';
-        }
+        $inputType = match($baseType) {
+            'number', 'integer' => 'number',
+            'file' => 'file',
+            default => 'text',
+        };
     @endphp
     @if($type === 'boolean')
-        <label data-endpoint="{{ $endpointId }}" hidden>
+        <label data-endpoint="{{ $endpointId }}" style="display: none">
             <input type="radio" name="{{ $fullName }}"
                    value="{{$component === 'body' ? 'true' : 1}}"
                    data-endpoint="{{ $endpointId }}"
-                   data-component="{{ $component }}"
+                   data-component="{{ $component }}" @if($class)class="{{ $class }}"@endif
             >
             <code>true</code>
         </label>
-        <label data-endpoint="{{ $endpointId }}" hidden>
+        <label data-endpoint="{{ $endpointId }}" style="display: none">
             <input type="radio" name="{{ $fullName }}"
                    value="{{$component === 'body' ? 'false' : 0}}"
                    data-endpoint="{{ $endpointId }}"
-                   data-component="{{ $component }}"
+                   data-component="{{ $component }}" @if($class)class="{{ $class }}"@endif
             >
             <code>false</code>
         </label>
     @elseif($isList)
-        <input type="{{ $inputType }}"
-               name="{{ $fullName."[0]" }}"
+        <input type="{{ $inputType }}" style="display: none"
+               @if($inputType === 'number')step="any"@endif
+               name="{{ $fullName."[0]" }}" @if($class)class="{{ $class }}"@endif
                data-endpoint="{{ $endpointId }}"
-               data-component="{{ $component }}" hidden>
-        <input type="{{ $inputType }}"
-               name="{{ $fullName."[1]" }}"
+               data-component="{{ $component }}">
+        <input type="{{ $inputType }}" style="display: none"
+               name="{{ $fullName."[1]" }}" @if($class)class="{{ $class }}"@endif
                data-endpoint="{{ $endpointId }}"
-               data-component="{{ $component }}" hidden>
+               data-component="{{ $component }}">
     @else
-        <input type="{{ $inputType }}"
-               name="{{ $fullName }}"
+        <input type="{{ $inputType }}" style="display: none"
+               @if($inputType === 'number')step="any"@endif
+               name="{{ $fullName }}" @if($class)class="{{ $class }}"@endif
                data-endpoint="{{ $endpointId }}"
                value="{!! (isset($example) && (is_string($example) || is_numeric($example))) ? $example : '' !!}"
-               data-component="{{ $component }}" hidden>
+               data-component="{{ $component }}">
     @endif
 @endif
 <br>
-{!! Parsedown::instance()->text($description) !!}
+@php
+    if($example !== null && $example !== '' && !is_array($example)) {
+        $exampleAsString = $example;
+        if (is_bool($example)) {
+            $exampleAsString = $example ? "true" : "false";
+        }
+        $description .= " Example: `$exampleAsString`";
+    }
+@endphp
+{!! Parsedown::instance()->text(trim($description)) !!}
+@if(!empty($enumValues))
+Must be one of:
+<ul style="list-style-type: square;">{!! implode(" ", array_map(fn($val) => "<li><code>$val</code></li>", $enumValues)) !!}</ul>
+@endif

@@ -15,14 +15,13 @@ class RequireNumericLiteralSeparatorSniff implements Sniff
 
 	public const CODE_REQUIRED_NUMERIC_LITERAL_SEPARATOR = 'RequiredNumericLiteralSeparator';
 
-	/** @var bool|null */
-	public $enable = null;
+	public ?bool $enable = null;
 
-	/** @var int */
-	public $minDigitsBeforeDecimalPoint = 4;
+	public int $minDigitsBeforeDecimalPoint = 4;
 
-	/** @var int */
-	public $minDigitsAfterDecimalPoint = 4;
+	public int $minDigitsAfterDecimalPoint = 4;
+
+	public bool $ignoreOctalNumbers = true;
 
 	/**
 	 * @return array<int, (int|string)>
@@ -37,34 +36,42 @@ class RequireNumericLiteralSeparatorSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $numberPointer
 	 */
 	public function process(File $phpcsFile, $numberPointer): void
 	{
 		$this->enable = SniffSettingsHelper::isEnabledByPhpVersion($this->enable, 70400);
+		$this->minDigitsBeforeDecimalPoint = SniffSettingsHelper::normalizeInteger($this->minDigitsBeforeDecimalPoint);
+		$this->minDigitsAfterDecimalPoint = SniffSettingsHelper::normalizeInteger($this->minDigitsAfterDecimalPoint);
 
 		if (!$this->enable) {
 			return;
 		}
 
 		$tokens = $phpcsFile->getTokens();
+		$number = $tokens[$numberPointer]['content'];
 
 		if (strpos($tokens[$numberPointer]['content'], '_') !== false) {
 			return;
 		}
 
-		$regexp = '~(?:^\\d{' . SniffSettingsHelper::normalizeInteger(
-			$this->minDigitsBeforeDecimalPoint
-		) . '}|\.\\d{' . SniffSettingsHelper::normalizeInteger($this->minDigitsAfterDecimalPoint) . '})~';
-		if (preg_match($regexp, $tokens[$numberPointer]['content']) === 0) {
+		if (
+			$this->ignoreOctalNumbers
+			&& preg_match('~^0[0-7]+$~', $number) === 1
+		) {
+			return;
+		}
+
+		$regexp = '~(?:^\\d{' . $this->minDigitsBeforeDecimalPoint . '}|\.\\d{' . $this->minDigitsAfterDecimalPoint . '})~';
+
+		if (preg_match($regexp, $number) === 0) {
 			return;
 		}
 
 		$phpcsFile->addError(
 			'Use of numeric literal separator is required.',
 			$numberPointer,
-			self::CODE_REQUIRED_NUMERIC_LITERAL_SEPARATOR
+			self::CODE_REQUIRED_NUMERIC_LITERAL_SEPARATOR,
 		);
 	}
 

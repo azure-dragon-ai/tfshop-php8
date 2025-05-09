@@ -2,11 +2,14 @@
 
 namespace PHPStan\PhpDocParser\Ast\Type;
 
+use PHPStan\PhpDocParser\Ast\NodeAttributes;
+
 class NullableTypeNode implements TypeNode
 {
 
-	/** @var TypeNode */
-	public $type;
+	use NodeAttributes;
+
+	public TypeNode $type;
 
 	public function __construct(TypeNode $type)
 	{

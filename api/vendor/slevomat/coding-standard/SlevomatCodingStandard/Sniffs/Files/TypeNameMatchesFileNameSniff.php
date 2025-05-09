@@ -20,10 +20,7 @@ use function substr;
 use function ucfirst;
 use function uksort;
 use const DIRECTORY_SEPARATOR;
-use const T_CLASS;
-use const T_INTERFACE;
 use const T_STRING;
-use const T_TRAIT;
 
 class TypeNameMatchesFileNameSniff implements Sniff
 {
@@ -31,47 +28,41 @@ class TypeNameMatchesFileNameSniff implements Sniff
 	public const CODE_NO_MATCH_BETWEEN_TYPE_NAME_AND_FILE_NAME = 'NoMatchBetweenTypeNameAndFileName';
 
 	/** @var array<string, string> */
-	public $rootNamespaces = [];
+	public array $rootNamespaces = [];
 
-	/** @var string[] */
-	public $skipDirs = [];
+	/** @var list<string> */
+	public array $skipDirs = [];
 
-	/** @var string[] */
-	public $ignoredNamespaces = [];
+	/** @var list<string> */
+	public array $ignoredNamespaces = [];
 
-	/** @var string[] */
-	public $extensions = ['php'];
+	/** @var list<string> */
+	public array $extensions = ['php'];
 
 	/** @var array<string, string>|null */
-	private $normalizedRootNamespaces;
+	private ?array $normalizedRootNamespaces = null;
 
-	/** @var string[]|null */
-	private $normalizedSkipDirs;
+	/** @var list<string>|null */
+	private ?array $normalizedSkipDirs = null;
 
-	/** @var string[]|null */
-	private $normalizedIgnoredNamespaces;
+	/** @var list<string>|null */
+	private ?array $normalizedIgnoredNamespaces = null;
 
-	/** @var string[]|null */
-	private $normalizedExtensions;
+	/** @var list<string>|null */
+	private ?array $normalizedExtensions = null;
 
-	/** @var FilepathNamespaceExtractor */
-	private $namespaceExtractor;
+	private ?FilepathNamespaceExtractor $namespaceExtractor = null;
 
 	/**
 	 * @return array<int, (int|string)>
 	 */
 	public function register(): array
 	{
-		return [
-			T_CLASS,
-			T_INTERFACE,
-			T_TRAIT,
-		];
+		return TokenHelper::$typeKeywordTokenCodes;
 	}
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $typePointer
 	 */
 	public function process(File $phpcsFile, $typePointer): void
@@ -107,15 +98,15 @@ class TypeNameMatchesFileNameSniff implements Sniff
 				'%s name %s does not match filepath %s.',
 				ucfirst($tokens[$typePointer]['content']),
 				$typeName,
-				$phpcsFile->getFilename()
+				$phpcsFile->getFilename(),
 			),
 			$namePointer,
-			self::CODE_NO_MATCH_BETWEEN_TYPE_NAME_AND_FILE_NAME
+			self::CODE_NO_MATCH_BETWEEN_TYPE_NAME_AND_FILE_NAME,
 		);
 	}
 
 	/**
-	 * @return string[] path(string) => namespace
+	 * @return array<string, string> path(string) => namespace
 	 */
 	private function getRootNamespaces(): array
 	{
@@ -145,7 +136,7 @@ class TypeNameMatchesFileNameSniff implements Sniff
 	}
 
 	/**
-	 * @return string[]
+	 * @return list<string>
 	 */
 	private function getSkipDirs(): array
 	{
@@ -157,7 +148,7 @@ class TypeNameMatchesFileNameSniff implements Sniff
 	}
 
 	/**
-	 * @return string[]
+	 * @return list<string>
 	 */
 	private function getIgnoredNamespaces(): array
 	{
@@ -169,7 +160,7 @@ class TypeNameMatchesFileNameSniff implements Sniff
 	}
 
 	/**
-	 * @return string[]
+	 * @return list<string>
 	 */
 	private function getExtensions(): array
 	{
@@ -186,7 +177,7 @@ class TypeNameMatchesFileNameSniff implements Sniff
 			$this->namespaceExtractor = new FilepathNamespaceExtractor(
 				$this->getRootNamespaces(),
 				$this->getSkipDirs(),
-				$this->getExtensions()
+				$this->getExtensions(),
 			);
 		}
 

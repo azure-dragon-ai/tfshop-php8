@@ -4,6 +4,7 @@ namespace SlevomatCodingStandard\Sniffs\ControlStructures;
 
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Util\Tokens;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\SniffSettingsHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use function sprintf;
@@ -14,19 +15,18 @@ class RequireSingleLineConditionSniff extends AbstractLineCondition
 
 	public const CODE_REQUIRED_SINGLE_LINE_CONDITION = 'RequiredSingleLineCondition';
 
-	/** @var int */
-	public $maxLineLength = 120;
+	public int $maxLineLength = 120;
 
-	/** @var bool */
-	public $alwaysForSimpleConditions = true;
+	public bool $alwaysForSimpleConditions = true;
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $controlStructurePointer
 	 */
 	public function process(File $phpcsFile, $controlStructurePointer): void
 	{
+		$this->maxLineLength = SniffSettingsHelper::normalizeInteger($this->maxLineLength);
+
 		if ($this->shouldBeSkipped($phpcsFile, $controlStructurePointer)) {
 			return;
 		}
@@ -44,7 +44,7 @@ class RequireSingleLineConditionSniff extends AbstractLineCondition
 			$phpcsFile,
 			TokenHelper::$inlineCommentTokenCodes,
 			$parenthesisOpenerPointer + 1,
-			$parenthesisCloserPointer
+			$parenthesisCloserPointer,
 		) !== null) {
 			return;
 		}
@@ -58,7 +58,7 @@ class RequireSingleLineConditionSniff extends AbstractLineCondition
 			$phpcsFile,
 			Tokens::$booleanOperators,
 			$parenthesisOpenerPointer + 1,
-			$parenthesisCloserPointer
+			$parenthesisCloserPointer,
 		) === null;
 
 		if (!$this->shouldReportError($lineLength, $isSimpleCondition)) {
@@ -68,10 +68,10 @@ class RequireSingleLineConditionSniff extends AbstractLineCondition
 		$fix = $phpcsFile->addFixableError(
 			sprintf(
 				'Condition of "%s" should be placed on a single line.',
-				$this->getControlStructureName($phpcsFile, $controlStructurePointer)
+				$this->getControlStructureName($phpcsFile, $controlStructurePointer),
 			),
 			$controlStructurePointer,
-			self::CODE_REQUIRED_SINGLE_LINE_CONDITION
+			self::CODE_REQUIRED_SINGLE_LINE_CONDITION,
 		);
 
 		if (!$fix) {
@@ -82,22 +82,18 @@ class RequireSingleLineConditionSniff extends AbstractLineCondition
 
 		$phpcsFile->fixer->addContent($parenthesisOpenerPointer, $condition);
 
-		for ($i = $parenthesisOpenerPointer + 1; $i < $parenthesisCloserPointer; $i++) {
-			$phpcsFile->fixer->replaceToken($i, '');
-		}
+		FixerHelper::removeBetween($phpcsFile, $parenthesisOpenerPointer, $parenthesisCloserPointer);
 
 		$phpcsFile->fixer->endChangeset();
 	}
 
 	private function shouldReportError(int $lineLength, bool $isSimpleCondition): bool
 	{
-		$maxLineLength = SniffSettingsHelper::normalizeInteger($this->maxLineLength);
-
-		if ($maxLineLength === 0) {
+		if ($this->maxLineLength === 0) {
 			return true;
 		}
 
-		if ($lineLength <= $maxLineLength) {
+		if ($lineLength <= $this->maxLineLength) {
 			return true;
 		}
 

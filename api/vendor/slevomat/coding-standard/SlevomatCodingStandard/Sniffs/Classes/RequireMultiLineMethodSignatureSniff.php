@@ -4,44 +4,58 @@ namespace SlevomatCodingStandard\Sniffs\Classes;
 
 use Exception;
 use PHP_CodeSniffer\Files\File;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\FunctionHelper;
 use SlevomatCodingStandard\Helpers\IndentationHelper;
 use SlevomatCodingStandard\Helpers\SniffSettingsHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
+use UnexpectedValueException;
 use function count;
 use function preg_match;
 use function sprintf;
 use function strlen;
 use const T_COMMA;
-use const T_WHITESPACE;
 
 class RequireMultiLineMethodSignatureSniff extends AbstractMethodSignature
 {
 
 	public const CODE_REQUIRED_MULTI_LINE_SIGNATURE = 'RequiredMultiLineSignature';
+	private const DEFAULT_MIN_LINE_LENGTH = 121;
 
-	/** @var int */
-	public $minLineLength = 121;
+	public ?int $minLineLength = null;
 
-	/** @var string[] */
-	public $includedMethodPatterns = [];
+	public ?int $minParametersCount = null;
 
-	/** @var string[]|null */
-	public $includedMethodNormalizedPatterns;
+	/** @var list<string> */
+	public array $includedMethodPatterns = [];
 
-	/** @var string[] */
-	public $excludedMethodPatterns = [];
+	/** @var list<string>|null */
+	public ?array $includedMethodNormalizedPatterns = null;
 
-	/** @var string[]|null */
-	public $excludedMethodNormalizedPatterns;
+	/** @var list<string> */
+	public array $excludedMethodPatterns = [];
+
+	/** @var list<string>|null */
+	public ?array $excludedMethodNormalizedPatterns = null;
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $methodPointer
 	 */
 	public function process(File $phpcsFile, $methodPointer): void
 	{
+		$this->minLineLength = SniffSettingsHelper::normalizeNullableInteger($this->minLineLength);
+		$this->minParametersCount = SniffSettingsHelper::normalizeNullableInteger($this->minParametersCount);
+
+		if ($this->minLineLength !== null && $this->minParametersCount !== null) {
+			throw new UnexpectedValueException('Either minLineLength or minParametersCount can be set.');
+		}
+
+		// Maintain backward compatibility if no configuration provided
+		if ($this->minLineLength === null && $this->minParametersCount === null) {
+			$this->minLineLength = self::DEFAULT_MIN_LINE_LENGTH;
+		}
+
 		if (!FunctionHelper::isMethod($phpcsFile, $methodPointer)) {
 			return;
 		}
@@ -55,7 +69,8 @@ class RequireMultiLineMethodSignatureSniff extends AbstractMethodSignature
 		}
 
 		$parameters = $phpcsFile->getMethodParameters($methodPointer);
-		if (count($parameters) === 0) {
+		$parametersCount = count($parameters);
+		if ($parametersCount === 0) {
 			return;
 		}
 
@@ -77,12 +92,15 @@ class RequireMultiLineMethodSignatureSniff extends AbstractMethodSignature
 			return;
 		}
 
-		$minLineLength = SniffSettingsHelper::normalizeInteger($this->minLineLength);
-		if ($minLineLength !== 0 && strlen($signatureWithoutTabIndentation) < $minLineLength) {
+		if ($this->minLineLength !== null && $this->minLineLength !== 0 && strlen($signatureWithoutTabIndentation) < $this->minLineLength) {
 			return;
 		}
 
-		$error = sprintf('Signature of method "%s" should be splitted to more lines so each parameter is on its own line.', $methodName);
+		if ($this->minParametersCount !== null && $parametersCount < $this->minParametersCount) {
+			return;
+		}
+
+		$error = sprintf('Signature of method "%s" should be split to more lines so each parameter is on its own line.', $methodName);
 		$fix = $phpcsFile->addFixableError($error, $methodPointer, self::CODE_REQUIRED_MULTI_LINE_SIGNATURE);
 		if (!$fix) {
 			return;
@@ -97,20 +115,15 @@ class RequireMultiLineMethodSignatureSniff extends AbstractMethodSignature
 				$phpcsFile,
 				T_COMMA,
 				$parameter['token'] - 1,
-				$tokens[$methodPointer]['parenthesis_opener']
+				$tokens[$methodPointer]['parenthesis_opener'],
 			);
 			if ($pointerBeforeParameter === null) {
 				$pointerBeforeParameter = $tokens[$methodPointer]['parenthesis_opener'];
 			}
 
 			$phpcsFile->fixer->addContent($pointerBeforeParameter, $phpcsFile->eolChar . IndentationHelper::addIndentation($indentation));
-			for ($i = $pointerBeforeParameter + 1; $i < $parameter['token']; $i++) {
-				if ($tokens[$i]['code'] !== T_WHITESPACE) {
-					break;
-				}
 
-				$phpcsFile->fixer->replaceToken($i, '');
-			}
+			FixerHelper::removeWhitespaceAfter($phpcsFile, $pointerBeforeParameter);
 		}
 
 		$phpcsFile->fixer->addContentBefore($tokens[$methodPointer]['parenthesis_closer'], $phpcsFile->eolChar . $indentation);
@@ -119,9 +132,7 @@ class RequireMultiLineMethodSignatureSniff extends AbstractMethodSignature
 	}
 
 	/**
-	 * @param string $methodName
-	 * @param string[] $normalizedPatterns
-	 * @return bool
+	 * @param list<string> $normalizedPatterns
 	 */
 	private function isMethodNameInPatterns(string $methodName, array $normalizedPatterns): bool
 	{
@@ -139,7 +150,7 @@ class RequireMultiLineMethodSignatureSniff extends AbstractMethodSignature
 	}
 
 	/**
-	 * @return string[]
+	 * @return list<string>
 	 */
 	private function getIncludedMethodNormalizedPatterns(): array
 	{
@@ -150,7 +161,7 @@ class RequireMultiLineMethodSignatureSniff extends AbstractMethodSignature
 	}
 
 	/**
-	 * @return string[]
+	 * @return list<string>
 	 */
 	private function getExcludedMethodNormalizedPatterns(): array
 	{

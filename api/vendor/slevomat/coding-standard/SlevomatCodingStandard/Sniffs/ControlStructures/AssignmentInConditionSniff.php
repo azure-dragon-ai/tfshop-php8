@@ -19,8 +19,7 @@ class AssignmentInConditionSniff implements Sniff
 
 	public const CODE_ASSIGNMENT_IN_CONDITION = 'AssignmentInCondition';
 
-	/** @var bool */
-	public $ignoreAssignmentsInsideFunctionCalls = false;
+	public bool $ignoreAssignmentsInsideFunctionCalls = false;
 
 	/**
 	 * @return array<int, (int|string)>
@@ -36,13 +35,13 @@ class AssignmentInConditionSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $conditionStartPointer
 	 */
 	public function process(File $phpcsFile, $conditionStartPointer): void
 	{
 		$tokens = $phpcsFile->getTokens();
 		$token = $tokens[$conditionStartPointer];
+
 		if ($token['code'] === T_DO) {
 			$whilePointer = TokenHelper::findNext($phpcsFile, T_WHILE, $token['scope_closer'] + 1);
 			$whileToken = $tokens[$whilePointer];
@@ -54,13 +53,20 @@ class AssignmentInConditionSniff implements Sniff
 			$parenthesisCloser = $token['parenthesis_closer'];
 			$type = $token['code'] === T_IF ? 'if' : 'elseif';
 		}
+
+		if (
+			$parenthesisOpener === null
+			|| $parenthesisCloser === null
+		) {
+			return;
+		}
+
 		$this->processCondition($phpcsFile, $parenthesisOpener, $parenthesisCloser, $type);
 	}
 
 	private function processCondition(File $phpcsFile, int $parenthesisOpener, int $parenthesisCloser, string $conditionType): void
 	{
 		$equalsTokenPointers = TokenHelper::findNextAll($phpcsFile, T_EQUAL, $parenthesisOpener + 1, $parenthesisCloser);
-		$tokens = $phpcsFile->getTokens();
 		if ($equalsTokenPointers === []) {
 			return;
 		}
@@ -70,10 +76,12 @@ class AssignmentInConditionSniff implements Sniff
 			return;
 		}
 
+		$tokens = $phpcsFile->getTokens();
+
 		foreach ($equalsTokenPointers as $equalsTokenPointer) {
+			/** @var non-empty-list<int> $parenthesisStarts */
 			$parenthesisStarts = array_keys($tokens[$equalsTokenPointer]['nested_parenthesis']);
 
-			/** @var int $insideParenthesis */
 			$insideParenthesis = max($parenthesisStarts);
 			if ($insideParenthesis === $parenthesisOpener) {
 				$this->error($phpcsFile, $conditionType, $equalsTokenPointer);
@@ -84,7 +92,7 @@ class AssignmentInConditionSniff implements Sniff
 				$phpcsFile,
 				TokenHelper::getOnlyNameTokenCodes(),
 				$insideParenthesis,
-				$parenthesisOpener
+				$parenthesisOpener,
 			);
 			if ($functionCall !== null) {
 				continue;
@@ -99,7 +107,7 @@ class AssignmentInConditionSniff implements Sniff
 		$phpcsFile->addError(
 			sprintf('Assignment in %s condition is not allowed.', $conditionType),
 			$equalsTokenPointer,
-			self::CODE_ASSIGNMENT_IN_CONDITION
+			self::CODE_ASSIGNMENT_IN_CONDITION,
 		);
 	}
 

@@ -9,14 +9,14 @@ use SlevomatCodingStandard\Helpers\TokenHelper;
 use function abs;
 use function array_key_exists;
 use function in_array;
-use const T_BREAK;
 use const T_CASE;
 use const T_CLOSE_CURLY_BRACKET;
 use const T_COLON;
-use const T_CONTINUE;
 use const T_DEFAULT;
-use const T_GOTO;
+use const T_OPEN_CURLY_BRACKET;
+use const T_OPEN_TAG;
 use const T_RETURN;
+use const T_SEMICOLON;
 use const T_SWITCH;
 use const T_THROW;
 use const T_YIELD;
@@ -25,40 +25,45 @@ use const T_YIELD_FROM;
 class JumpStatementsSpacingSniff extends AbstractControlStructureSpacing
 {
 
-	/** @var int */
-	public $linesCountBeforeControlStructure = 1;
+	public int $linesCountBefore = 1;
 
-	/** @var int */
-	public $linesCountBeforeFirstControlStructure = 0;
+	public int $linesCountBeforeFirst = 0;
 
-	/** @var int|null */
-	public $linesCountBeforeWhenFirstInCaseOrDefault = null;
+	public ?int $linesCountBeforeWhenFirstInCaseOrDefault = null;
 
-	/** @var int */
-	public $linesCountAfterControlStructure = 1;
+	public int $linesCountAfter = 1;
 
-	/** @var int */
-	public $linesCountAfterLastControlStructure = 0;
+	public int $linesCountAfterLast = 0;
 
-	/** @var int|null */
-	public $linesCountAfterWhenLastInCaseOrDefault = null;
+	public ?int $linesCountAfterWhenLastInCaseOrDefault = null;
 
-	/** @var int|null */
-	public $linesCountAfterWhenLastInLastCaseOrDefault = null;
+	public ?int $linesCountAfterWhenLastInLastCaseOrDefault = null;
 
-	/** @var bool */
-	public $allowSingleLineYieldStacking = true;
+	public bool $allowSingleLineYieldStacking = true;
 
-	/** @var string[] */
-	public $tokensToCheck = [];
+	/** @var list<string> */
+	public array $jumpStatements = [];
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $jumpStatementPointer
 	 */
 	public function process(File $phpcsFile, $jumpStatementPointer): void
 	{
+		$this->linesCountBefore = SniffSettingsHelper::normalizeInteger($this->linesCountBefore);
+		$this->linesCountBeforeFirst = SniffSettingsHelper::normalizeInteger($this->linesCountBeforeFirst);
+		$this->linesCountBeforeWhenFirstInCaseOrDefault = SniffSettingsHelper::normalizeNullableInteger(
+			$this->linesCountBeforeWhenFirstInCaseOrDefault,
+		);
+		$this->linesCountAfter = SniffSettingsHelper::normalizeInteger($this->linesCountAfter);
+		$this->linesCountAfterLast = SniffSettingsHelper::normalizeInteger($this->linesCountAfterLast);
+		$this->linesCountAfterWhenLastInCaseOrDefault = SniffSettingsHelper::normalizeNullableInteger(
+			$this->linesCountAfterWhenLastInCaseOrDefault,
+		);
+		$this->linesCountAfterWhenLastInLastCaseOrDefault = SniffSettingsHelper::normalizeNullableInteger(
+			$this->linesCountAfterWhenLastInLastCaseOrDefault,
+		);
+
 		if ($this->isOneOfYieldSpecialCases($phpcsFile, $jumpStatementPointer)) {
 			return;
 		}
@@ -67,32 +72,32 @@ class JumpStatementsSpacingSniff extends AbstractControlStructureSpacing
 	}
 
 	/**
-	 * @return int[]
+	 * @return list<string>
 	 */
-	protected function getSupportedTokens(): array
+	protected function getSupportedKeywords(): array
 	{
 		return [
-			T_GOTO,
-			T_BREAK,
-			T_CONTINUE,
-			T_RETURN,
-			T_THROW,
-			T_YIELD,
-			T_YIELD_FROM,
+			self::KEYWORD_GOTO,
+			self::KEYWORD_BREAK,
+			self::KEYWORD_CONTINUE,
+			self::KEYWORD_RETURN,
+			self::KEYWORD_THROW,
+			self::KEYWORD_YIELD,
+			self::KEYWORD_YIELD_FROM,
 		];
 	}
 
 	/**
-	 * @return string[]
+	 * @return list<string>
 	 */
-	protected function getTokensToCheck(): array
+	protected function getKeywordsToCheck(): array
 	{
-		return $this->tokensToCheck;
+		return $this->jumpStatements;
 	}
 
 	protected function getLinesCountBefore(): int
 	{
-		return SniffSettingsHelper::normalizeInteger($this->linesCountBeforeControlStructure);
+		return $this->linesCountBefore;
 	}
 
 	protected function getLinesCountBeforeFirst(File $phpcsFile, int $jumpStatementPointer): int
@@ -101,23 +106,19 @@ class JumpStatementsSpacingSniff extends AbstractControlStructureSpacing
 			$this->linesCountBeforeWhenFirstInCaseOrDefault !== null
 			&& $this->isFirstInCaseOrDefault($phpcsFile, $jumpStatementPointer)
 		) {
-			return SniffSettingsHelper::normalizeInteger($this->linesCountBeforeWhenFirstInCaseOrDefault);
+			return $this->linesCountBeforeWhenFirstInCaseOrDefault;
 		}
 
-		return SniffSettingsHelper::normalizeInteger($this->linesCountBeforeFirstControlStructure);
+		return $this->linesCountBeforeFirst;
 	}
 
 	protected function getLinesCountAfter(): int
 	{
-		return SniffSettingsHelper::normalizeInteger($this->linesCountAfterControlStructure);
+		return $this->linesCountAfter;
 	}
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.Functions.UnusedParameter.UnusedParameter
-	 * @param File $phpcsFile
-	 * @param int $jumpStatementPointer
-	 * @param int $jumpStatementEndPointer
-	 * @return int
 	 */
 	protected function getLinesCountAfterLast(File $phpcsFile, int $jumpStatementPointer, int $jumpStatementEndPointer): int
 	{
@@ -125,17 +126,17 @@ class JumpStatementsSpacingSniff extends AbstractControlStructureSpacing
 			$this->linesCountAfterWhenLastInLastCaseOrDefault !== null
 			&& $this->isLastInLastCaseOrDefault($phpcsFile, $jumpStatementEndPointer)
 		) {
-			return SniffSettingsHelper::normalizeInteger($this->linesCountAfterWhenLastInLastCaseOrDefault);
+			return $this->linesCountAfterWhenLastInLastCaseOrDefault;
 		}
 
 		if (
 			$this->linesCountAfterWhenLastInCaseOrDefault !== null
 			&& $this->isLastInCaseOrDefault($phpcsFile, $jumpStatementEndPointer)
 		) {
-			return SniffSettingsHelper::normalizeInteger($this->linesCountAfterWhenLastInCaseOrDefault);
+			return $this->linesCountAfterWhenLastInCaseOrDefault;
 		}
 
-		return SniffSettingsHelper::normalizeInteger($this->linesCountAfterLastControlStructure);
+		return $this->linesCountAfterLast;
 	}
 
 	protected function checkLinesBefore(File $phpcsFile, int $jumpStatementPointer): void
@@ -144,6 +145,10 @@ class JumpStatementsSpacingSniff extends AbstractControlStructureSpacing
 			$this->allowSingleLineYieldStacking
 			&& $this->isStackedSingleLineYield($phpcsFile, $jumpStatementPointer, true)
 		) {
+			return;
+		}
+
+		if ($this->isThrowExpression($phpcsFile, $jumpStatementPointer)) {
 			return;
 		}
 
@@ -156,6 +161,10 @@ class JumpStatementsSpacingSniff extends AbstractControlStructureSpacing
 			$this->allowSingleLineYieldStacking
 			&& $this->isStackedSingleLineYield($phpcsFile, $jumpStatementPointer, false)
 		) {
+			return;
+		}
+
+		if ($this->isThrowExpression($phpcsFile, $jumpStatementPointer)) {
 			return;
 		}
 
@@ -202,6 +211,23 @@ class JumpStatementsSpacingSniff extends AbstractControlStructureSpacing
 
 		return $adjoiningYieldPointer !== null
 			&& abs($tokens[$adjoiningYieldPointer]['line'] - $tokens[$jumpStatementPointer]['line']) === 1;
+	}
+
+	private function isThrowExpression(File $phpcsFile, int $jumpStatementPointer): bool
+	{
+		$tokens = $phpcsFile->getTokens();
+
+		if ($tokens[$jumpStatementPointer]['code'] !== T_THROW) {
+			return false;
+		}
+
+		$pointerBefore = TokenHelper::findPreviousEffective($phpcsFile, $jumpStatementPointer - 1);
+
+		return !in_array(
+			$tokens[$pointerBefore]['code'],
+			[T_SEMICOLON, T_COLON, T_OPEN_CURLY_BRACKET, T_CLOSE_CURLY_BRACKET, T_OPEN_TAG],
+			true,
+		);
 	}
 
 	private function isFirstInCaseOrDefault(File $phpcsFile, int $jumpStatementPointer): bool

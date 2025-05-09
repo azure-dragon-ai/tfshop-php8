@@ -6,6 +6,7 @@ use Exception;
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
 use SlevomatCodingStandard\Helpers\CatchHelper;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\NamespaceHelper;
 use SlevomatCodingStandard\Helpers\ReferencedNameHelper;
 use SlevomatCodingStandard\Helpers\SuppressHelper;
@@ -43,7 +44,6 @@ class ReferenceThrowableOnlySniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $openTagPointer
 	 */
 	public function process(File $phpcsFile, $openTagPointer): void
@@ -59,7 +59,7 @@ class ReferenceThrowableOnlySniff implements Sniff
 			$resolvedName = NamespaceHelper::resolveClassName(
 				$phpcsFile,
 				$referencedName->getNameAsReferencedInFile(),
-				$referencedName->getStartPointer()
+				$referencedName->getStartPointer(),
 			);
 			if ($resolvedName !== '\\Exception') {
 				continue;
@@ -73,7 +73,7 @@ class ReferenceThrowableOnlySniff implements Sniff
 				$previousPointer = TokenHelper::findPreviousExcluding(
 					$phpcsFile,
 					array_merge(TokenHelper::$ineffectiveTokenCodes, TokenHelper::getNameTokenCodes(), [T_BITWISE_OR]),
-					$previousPointer - 1
+					$previousPointer - 1,
 				);
 			}
 			if ($tokens[$previousPointer]['code'] === T_OPEN_PARENTHESIS) {
@@ -90,7 +90,7 @@ class ReferenceThrowableOnlySniff implements Sniff
 					&& SuppressHelper::isSniffSuppressed(
 						$phpcsFile,
 						$openParenthesisOpenerPointer,
-						sprintf('%s.%s', self::NAME, self::CODE_REFERENCED_GENERAL_EXCEPTION)
+						sprintf('%s.%s', self::NAME, self::CODE_REFERENCED_GENERAL_EXCEPTION),
 					)
 				) {
 					continue;
@@ -100,7 +100,7 @@ class ReferenceThrowableOnlySniff implements Sniff
 			$fix = $phpcsFile->addFixableError(
 				$message,
 				$referencedName->getStartPointer(),
-				self::CODE_REFERENCED_GENERAL_EXCEPTION
+				self::CODE_REFERENCED_GENERAL_EXCEPTION,
 			);
 			if (!$fix) {
 				continue;
@@ -108,11 +108,8 @@ class ReferenceThrowableOnlySniff implements Sniff
 
 			$phpcsFile->fixer->beginChangeset();
 
-			for ($i = $referencedName->getStartPointer(); $i <= $referencedName->getEndPointer(); $i++) {
-				$phpcsFile->fixer->replaceToken($i, '');
-			}
+			FixerHelper::change($phpcsFile, $referencedName->getStartPointer(), $referencedName->getEndPointer(), '\Throwable');
 
-			$phpcsFile->fixer->addContent($referencedName->getStartPointer(), '\Throwable');
 			$phpcsFile->fixer->endChangeset();
 		}
 	}
@@ -128,8 +125,8 @@ class ReferenceThrowableOnlySniff implements Sniff
 				break;
 			}
 
-			$catchedTypes = CatchHelper::findCatchedTypesInCatch($phpcsFile, $nextCatchToken);
-			if (in_array('\\Throwable', $catchedTypes, true)) {
+			$caughtTypes = CatchHelper::findCaughtTypesInCatch($phpcsFile, $nextCatchToken);
+			if (in_array('\\Throwable', $caughtTypes, true)) {
 				return true;
 			}
 

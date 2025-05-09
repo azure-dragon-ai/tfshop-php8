@@ -4,6 +4,7 @@ namespace SlevomatCodingStandard\Sniffs\Functions;
 
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
+use SlevomatCodingStandard\Helpers\FixerHelper;
 use SlevomatCodingStandard\Helpers\SniffSettingsHelper;
 use SlevomatCodingStandard\Helpers\TokenHelper;
 use function preg_match;
@@ -13,7 +14,6 @@ use function strlen;
 use function strpos;
 use const T_FN;
 use const T_FN_ARROW;
-use const T_WHITESPACE;
 
 class ArrowFunctionDeclarationSniff implements Sniff
 {
@@ -22,17 +22,13 @@ class ArrowFunctionDeclarationSniff implements Sniff
 	public const CODE_INCORRECT_SPACES_BEFORE_ARROW = 'IncorrectSpacesBeforeArrow';
 	public const CODE_INCORRECT_SPACES_AFTER_ARROW = 'IncorrectSpacesAfterArrow';
 
-	/** @var int */
-	public $spacesCountAfterKeyword = 1;
+	public int $spacesCountAfterKeyword = 1;
 
-	/** @var int */
-	public $spacesCountBeforeArrow = 1;
+	public int $spacesCountBeforeArrow = 1;
 
-	/** @var int */
-	public $spacesCountAfterArrow = 1;
+	public int $spacesCountAfterArrow = 1;
 
-	/** @var bool */
-	public $allowMultiLine = false;
+	public bool $allowMultiLine = false;
 
 	/**
 	 * @return array<int, (int|string)>
@@ -46,11 +42,14 @@ class ArrowFunctionDeclarationSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $arrowFunctionPointer
 	 */
 	public function process(File $phpcsFile, $arrowFunctionPointer): void
 	{
+		$this->spacesCountAfterKeyword = SniffSettingsHelper::normalizeInteger($this->spacesCountAfterKeyword);
+		$this->spacesCountBeforeArrow = SniffSettingsHelper::normalizeInteger($this->spacesCountBeforeArrow);
+		$this->spacesCountAfterArrow = SniffSettingsHelper::normalizeInteger($this->spacesCountAfterArrow);
+
 		$this->checkSpacesAfterKeyword($phpcsFile, $arrowFunctionPointer);
 
 		$arrowPointer = TokenHelper::findNext($phpcsFile, T_FN_ARROW, $arrowFunctionPointer);
@@ -61,7 +60,7 @@ class ArrowFunctionDeclarationSniff implements Sniff
 
 	private function checkSpacesAfterKeyword(File $phpcsFile, int $arrowFunctionPointer): void
 	{
-		$pointerAfter = TokenHelper::findNextExcluding($phpcsFile, T_WHITESPACE, $arrowFunctionPointer + 1);
+		$pointerAfter = TokenHelper::findNextNonWhitespace($phpcsFile, $arrowFunctionPointer + 1);
 
 		$spaces = TokenHelper::getContent($phpcsFile, $arrowFunctionPointer + 1, $pointerAfter - 1);
 
@@ -70,27 +69,32 @@ class ArrowFunctionDeclarationSniff implements Sniff
 		}
 
 		$actualSpaces = strlen($spaces);
-		$requiredSpaces = SniffSettingsHelper::normalizeInteger($this->spacesCountAfterKeyword);
 
-		if ($actualSpaces === $requiredSpaces && ($requiredSpaces === 0 || preg_match('~^ +$~', $spaces) === 1)) {
+		if (
+			$actualSpaces === $this->spacesCountAfterKeyword
+			&& (
+				$this->spacesCountAfterKeyword === 0
+				|| preg_match('~^ +$~', $spaces) === 1
+			)
+		) {
 			return;
 		}
 
 		$fix = $phpcsFile->addFixableError(
-			$this->formatErrorMessage('after "fn" keyword', $requiredSpaces),
+			$this->formatErrorMessage('after "fn" keyword', $this->spacesCountAfterKeyword),
 			$arrowFunctionPointer,
-			self::CODE_INCORRECT_SPACES_AFTER_KEYWORD
+			self::CODE_INCORRECT_SPACES_AFTER_KEYWORD,
 		);
 		if (!$fix) {
 			return;
 		}
 
-		$this->fixSpaces($phpcsFile, $arrowFunctionPointer, $pointerAfter, $requiredSpaces);
+		$this->fixSpaces($phpcsFile, $arrowFunctionPointer, $pointerAfter, $this->spacesCountAfterKeyword);
 	}
 
 	private function checkSpacesBeforeArrow(File $phpcsFile, int $arrowPointer): void
 	{
-		$pointerBefore = TokenHelper::findPreviousExcluding($phpcsFile, T_WHITESPACE, $arrowPointer - 1);
+		$pointerBefore = TokenHelper::findPreviousNonWhitespace($phpcsFile, $arrowPointer - 1);
 
 		$spaces = TokenHelper::getContent($phpcsFile, $pointerBefore + 1, $arrowPointer - 1);
 
@@ -99,27 +103,32 @@ class ArrowFunctionDeclarationSniff implements Sniff
 		}
 
 		$actualSpaces = strlen($spaces);
-		$requiredSpaces = SniffSettingsHelper::normalizeInteger($this->spacesCountBeforeArrow);
 
-		if ($actualSpaces === $requiredSpaces && ($requiredSpaces === 0 || preg_match('~^ +$~', $spaces) === 1)) {
+		if (
+			$actualSpaces === $this->spacesCountBeforeArrow
+			&& (
+				$this->spacesCountBeforeArrow === 0
+				|| preg_match('~^ +$~', $spaces) === 1
+			)
+		) {
 			return;
 		}
 
 		$fix = $phpcsFile->addFixableError(
-			$this->formatErrorMessage('before =>', $requiredSpaces),
+			$this->formatErrorMessage('before =>', $this->spacesCountBeforeArrow),
 			$arrowPointer,
-			self::CODE_INCORRECT_SPACES_BEFORE_ARROW
+			self::CODE_INCORRECT_SPACES_BEFORE_ARROW,
 		);
 		if (!$fix) {
 			return;
 		}
 
-		$this->fixSpaces($phpcsFile, $pointerBefore, $arrowPointer, $requiredSpaces);
+		$this->fixSpaces($phpcsFile, $pointerBefore, $arrowPointer, $this->spacesCountBeforeArrow);
 	}
 
 	private function checkSpacesAfterArrow(File $phpcsFile, int $arrowPointer): void
 	{
-		$pointerAfter = TokenHelper::findNextExcluding($phpcsFile, T_WHITESPACE, $arrowPointer + 1);
+		$pointerAfter = TokenHelper::findNextNonWhitespace($phpcsFile, $arrowPointer + 1);
 
 		$spaces = TokenHelper::getContent($phpcsFile, $arrowPointer + 1, $pointerAfter - 1);
 
@@ -128,22 +137,21 @@ class ArrowFunctionDeclarationSniff implements Sniff
 		}
 
 		$actualSpaces = strlen($spaces);
-		$requiredSpaces = SniffSettingsHelper::normalizeInteger($this->spacesCountAfterArrow);
 
-		if ($actualSpaces === $requiredSpaces && ($requiredSpaces === 0 || preg_match('~^ +$~', $spaces) === 1)) {
+		if ($actualSpaces === $this->spacesCountAfterArrow && ($this->spacesCountAfterArrow === 0 || preg_match('~^ +$~', $spaces) === 1)) {
 			return;
 		}
 
 		$fix = $phpcsFile->addFixableError(
-			$this->formatErrorMessage('after =>', $requiredSpaces),
+			$this->formatErrorMessage('after =>', $this->spacesCountAfterArrow),
 			$arrowPointer,
-			self::CODE_INCORRECT_SPACES_AFTER_ARROW
+			self::CODE_INCORRECT_SPACES_AFTER_ARROW,
 		);
 		if (!$fix) {
 			return;
 		}
 
-		$this->fixSpaces($phpcsFile, $arrowPointer, $pointerAfter, $requiredSpaces);
+		$this->fixSpaces($phpcsFile, $arrowPointer, $pointerAfter, $this->spacesCountAfterArrow);
 	}
 
 	private function formatErrorMessage(string $suffix, int $requiredSpaces): string
@@ -161,9 +169,7 @@ class ArrowFunctionDeclarationSniff implements Sniff
 			$phpcsFile->fixer->addContent($pointerBefore, str_repeat(' ', $requiredSpaces));
 		}
 
-		for ($i = $pointerBefore + 1; $i < $pointerAfter; $i++) {
-			$phpcsFile->fixer->replaceToken($i, '');
-		}
+		FixerHelper::removeBetween($phpcsFile, $pointerBefore, $pointerAfter);
 
 		$phpcsFile->fixer->endChangeset();
 	}

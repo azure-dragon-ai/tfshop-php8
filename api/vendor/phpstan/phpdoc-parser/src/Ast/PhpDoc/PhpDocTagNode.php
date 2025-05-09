@@ -2,14 +2,18 @@
 
 namespace PHPStan\PhpDocParser\Ast\PhpDoc;
 
+use PHPStan\PhpDocParser\Ast\NodeAttributes;
+use PHPStan\PhpDocParser\Ast\PhpDoc\Doctrine\DoctrineTagValueNode;
+use function trim;
+
 class PhpDocTagNode implements PhpDocChildNode
 {
 
-	/** @var string */
-	public $name;
+	use NodeAttributes;
 
-	/** @var PhpDocTagValueNode */
-	public $value;
+	public string $name;
+
+	public PhpDocTagValueNode $value;
 
 	public function __construct(string $name, PhpDocTagValueNode $value)
 	{
@@ -20,6 +24,10 @@ class PhpDocTagNode implements PhpDocChildNode
 
 	public function __toString(): string
 	{
+		if ($this->value instanceof DoctrineTagValueNode) {
+			return (string) $this->value;
+		}
+
 		return trim("{$this->name} {$this->value}");
 	}
 

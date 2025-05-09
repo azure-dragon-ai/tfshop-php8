@@ -27,7 +27,6 @@ class DisallowNumericLiteralSeparatorSniff implements Sniff
 
 	/**
 	 * @phpcsSuppress SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
-	 * @param File $phpcsFile
 	 * @param int $numberPointer
 	 */
 	public function process(File $phpcsFile, $numberPointer): void
@@ -41,7 +40,7 @@ class DisallowNumericLiteralSeparatorSniff implements Sniff
 		$fix = $phpcsFile->addFixableError(
 			'Use of numeric literal separator is disallowed.',
 			$numberPointer,
-			self::CODE_DISALLOWED_NUMERIC_LITERAL_SEPARATOR
+			self::CODE_DISALLOWED_NUMERIC_LITERAL_SEPARATOR,
 		);
 
 		if (!$fix) {

@@ -2,9 +2,9 @@
 
 namespace Knuckles\Scribe\Extracting;
 
+use Knuckles\Scribe\Exceptions\CouldntStartDatabaseTransaction;
 use Knuckles\Scribe\Exceptions\DatabaseTransactionsNotSupported;
 use Knuckles\Scribe\Tools\DocumentationConfig;
-use Knuckles\Scribe\Tools\Globals;
 use PDOException;
 
 trait DatabaseTransactionHelpers
@@ -16,22 +16,17 @@ trait DatabaseTransactionHelpers
 
     private function startDbTransaction()
     {
-        $database = app('db');
-
         foreach ($this->connectionsToTransact() as $connection) {
+            $database ??= app('db');
+
             $driver = $database->connection($connection);
 
             if (self::driverSupportsTransactions($driver)) {
                 try {
                     $driver->beginTransaction();
-                } catch (PDOException $e) {
-                    throw new \Exception(
-                        "Failed to connect to database connection '$connection'." .
-                        " Is the database running?" .
-                        " If you aren't using this database, remove it from the `database_connections_to_transact` config array."
-                    );
+                } catch (\Throwable $e) {
+                    throw CouldntStartDatabaseTransaction::forConnection($connection, $e);
                 }
-                continue;
             } else {
                 $driverClassName = get_class($driver);
                 throw DatabaseTransactionsNotSupported::create($connection, $driverClassName);
@@ -44,9 +39,9 @@ trait DatabaseTransactionHelpers
      */
     private function endDbTransaction()
     {
-        $database = app('db');
-
         foreach ($this->connectionsToTransact() as $connection) {
+            $database ??= app('db');
+
             $driver = $database->connection($connection);
             try {
                 $driver->rollback();
