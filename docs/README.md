@@ -60,6 +60,11 @@ chmod 777 config/
 
 create database tfshop default character set utf8mb4 collate utf8mb4_unicode_ci;
 
+php artisan migrate
+php artisan generate:sql pure
+php artisan storage:link
+php artisan key:generate
+
 php artisan app:sync-resource-to-oss
 
 npm 官方原始镜像网址是：https://registry.npmjs.org/
