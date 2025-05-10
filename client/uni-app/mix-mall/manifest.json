@@ -78,7 +78,7 @@
         "title" : "TFSHOP电商商城",
         "domain" : "",
         "router" : {
-            "base" : "/h5/"
+            "base" : "/github/h5/"
         },
         "optimization" : {
             "treeShaking" : {
@@ -93,5 +93,5 @@
             }
         }
     },
-	"sassImplementationName": "node-sass"
+    "sassImplementationName" : "node-sass"
 }

@@ -132,7 +132,7 @@ class Controller extends BaseController
                 );
             }
             $realBasePath = public_path() . '/storage/';
-            $imgSmall = \Image::make($realBasePath . $pathName);
+            /*$imgSmall = \Image::make($realBasePath . $pathName);
             $imageSpecification = config('image.specification');
             rsort($specificationArr);   //将前端输入的规格按大到小排序，不然将导致先生成小图片后再生成大图模糊的问题
             foreach ($specificationArr as $specification) {
@@ -140,7 +140,7 @@ class Controller extends BaseController
                     $imgSmall->widen($specification);
                     $imgSmall->save($realBasePath . 'temporary/' . $randFileName . "_$specification." . $extension);
                 }
-            }
+            }*/
         }
         $url = request()->root() . '/storage/' . $pathName;
         return array(
