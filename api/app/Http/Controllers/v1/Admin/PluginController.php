@@ -169,6 +169,7 @@ class PluginController extends Controller
                                 $name = explode('@', $value->action['controller'])[1];
                             } else {
                                 $name = $value->action['controller'];
+                                continue;
                             }
                             $path[$k] = [
                                 'uri' => $value->uri,
