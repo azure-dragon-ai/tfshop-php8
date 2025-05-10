@@ -265,7 +265,9 @@ class Plugin
                     throw new \Exception('缺少tfshop.config.json配置文件', Code::CODE_WRONG);
                 }
                 $config = json_decode($path, true);
-                $return[$value]['children'][] = $config;
+                if($config) {
+                    $return[$value]['children'][] = $config;
+                }
                 unset($path);
                 unset($config);
             }
