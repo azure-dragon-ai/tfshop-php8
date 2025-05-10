@@ -13,6 +13,8 @@ composer require doctrine/cache
 composer require luomor/dcat-nas-media @dev
 composer require league/flysystem-aws-s3-v3
 
+composer require "overtrue/wechat:^5.36"
+
 composer require "overtrue/laravel-filesystem-cos" -vvv
 composer require catfan/Medoo
 composer require laravel/passport
@@ -50,6 +52,8 @@ chmod 777 storage/framework/views
 chmod 777 storage/logs
 chmod -R 777 storage/logs/laravel.log
 chmod 777 bootstrap/cache/
+chmod 777 storage/app/public/image/
+chmod 777 storage/app/public/temporary/
 
 mkdir public/uploads
 chmod 777 public/uploads
