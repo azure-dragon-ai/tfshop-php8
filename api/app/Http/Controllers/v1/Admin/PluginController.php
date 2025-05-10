@@ -169,20 +169,29 @@ class PluginController extends Controller
                                 $name = explode('@', $value->action['controller'])[1];
                             } else {
                                 $name = $value->action['controller'];
-                                continue;
+                                //continue;
                             }
                             $path[$k] = [
                                 'uri' => $value->uri,
                                 'path' => implode(",", $value->methods),
                                 'name' => $name,
+                                'en' => $name,
                                 'explain' => __('route.' . $value->action['as']),
                             ];
                         }
                     } else {
+                        $name = "";
+                        if(stripos($value->action['controller'], '@')) {
+                            $name = explode('@', $value->action['controller'])[1];
+                        } else {
+                            $name = $value->action['controller'];
+                            //continue;
+                        }
                         $path[$k] = [
                             'uri' => $value->uri,
                             'path' => implode(",", $value->methods),
-                            'name' => explode('@', $value->action['controller'])[1],
+                            'name' => $name,
+                            'en' => $name,
                             'explain' => __('route.' . $value->action['as']),
                         ];
                     }
