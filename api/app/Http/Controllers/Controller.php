@@ -143,7 +143,7 @@ class Controller extends BaseController
             rsort($specificationArr);   //将前端输入的规格按大到小排序，不然将导致先生成小图片后再生成大图模糊的问题
             foreach ($specificationArr as $specification) {
                 if (in_array($specification, $imageSpecification)) {
-                    $imgSmall->resize(width: $specification);
+                    $imgSmall->scale(width: $specification);
                     $imgSmall->save($realBasePath . 'temporary/' . $randFileName . "_$specification." . $extension);
                 }
             }
