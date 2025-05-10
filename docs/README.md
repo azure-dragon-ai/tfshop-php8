@@ -60,7 +60,9 @@ chmod 777 storage/app/public/image/banner/
 chmod 777 storage/app/public/image/brand/
 chmod 777 storage/app/public/image/category/
 chmod 777 storage/app/public/image/product_sku/
+
 chmod 777 storage/app/public/image/project/
+https://image.intervention.io/v3/
 
 mkdir public/uploads
 chmod 777 public/uploads
