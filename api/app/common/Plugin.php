@@ -253,6 +253,7 @@ class Plugin
         foreach ($data as $value) {
             $list = Storage::disk('root')->directories("/$value");
             $return[$value] = [
+                'en' => $value,
                 'name' => $value,
                 'children' => []
             ];
