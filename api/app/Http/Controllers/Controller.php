@@ -22,6 +22,7 @@ use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\Request;
 use EasyWeChat\Factory;
+use Intervention\Image\ImageManager;
 /**
  * @group [PUBLIC]Controller(公共方法)
  * Class Controller
@@ -109,7 +110,9 @@ class Controller extends BaseController
         $extension = $file->getClientOriginalExtension();
         if ($extension == "") {//前端批量上传组件在拖动改变图片排序后, 扩展名会为空, 这里修补一下
             $extension = $request->file->extension();
-            if ($extension == 'jpeg') $extension = 'jpg';
+            if ($extension == 'jpeg') {
+                $extension = 'jpg';
+            }
         }
         $randFileName = str_random(5) . time();
         $fileName = $randFileName . '.' . $extension;
@@ -132,15 +135,18 @@ class Controller extends BaseController
                 );
             }
             $realBasePath = public_path() . '/storage/';
-            /*$imgSmall = \Image::make($realBasePath . $pathName);
+            $manager = new ImageManager(
+                new \Intervention\Image\Drivers\Gd\Driver()
+            );
+            $imgSmall = $manager->read($realBasePath . $pathName);
             $imageSpecification = config('image.specification');
             rsort($specificationArr);   //将前端输入的规格按大到小排序，不然将导致先生成小图片后再生成大图模糊的问题
             foreach ($specificationArr as $specification) {
                 if (in_array($specification, $imageSpecification)) {
-                    $imgSmall->widen($specification);
+                    $imgSmall->resize(width: $specification);
                     $imgSmall->save($realBasePath . 'temporary/' . $randFileName . "_$specification." . $extension);
                 }
-            }*/
+            }
         }
         $url = request()->root() . '/storage/' . $pathName;
         return array(

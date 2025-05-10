@@ -55,6 +55,12 @@ chmod 777 bootstrap/cache/
 chmod 777 storage/app/public/image/
 chmod 777 storage/app/public/temporary/
 chmod 777 storage/app/public/image/portrait
+chmod 777 storage/app/public/image/good/
+chmod 777 storage/app/public/image/banner/
+chmod 777 storage/app/public/image/brand/
+chmod 777 storage/app/public/image/category/
+chmod 777 storage/app/public/image/product_sku/
+chmod 777 storage/app/public/image/project/
 
 mkdir public/uploads
 chmod 777 public/uploads
