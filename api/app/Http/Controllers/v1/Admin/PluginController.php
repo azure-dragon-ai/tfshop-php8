@@ -164,10 +164,16 @@ class PluginController extends Controller
                             if (!array_key_exists('as', $value->action)) {
                                 throw new \Exception('请配置修改后的路由语言包', Code::CODE_PARAMETER_WRONG);
                             }
+                            $name = "";
+                            if(stripos($value->action['controller'], '@')) {
+                                $name = explode('@', $value->action['controller'])[1];
+                            } else {
+                                $name = $value->action['controller'];
+                            }
                             $path[$k] = [
                                 'uri' => $value->uri,
                                 'path' => implode(",", $value->methods),
-                                'name' => explode('@', $value->action['controller'])[1],
+                                'name' => $name,
                                 'explain' => __('route.' . $value->action['as']),
                             ];
                         }

@@ -54,6 +54,7 @@ chmod -R 777 storage/logs/laravel.log
 chmod 777 bootstrap/cache/
 chmod 777 storage/app/public/image/
 chmod 777 storage/app/public/temporary/
+chmod 777 storage/app/public/image/portrait
 
 mkdir public/uploads
 chmod 777 public/uploads
